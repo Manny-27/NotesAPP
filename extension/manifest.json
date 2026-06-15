@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Loquera Capture",
+  "version": "0.1.0",
+  "description": "Guarda selecciones y páginas web en tus notas Markdown locales.",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "host_permissions": ["http://localhost:3210/*"],
+  "action": {
+    "default_title": "Guardar en Loquera",
+    "default_popup": "popup.html"
+  }
+}

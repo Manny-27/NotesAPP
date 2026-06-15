@@ -1,0 +1,27 @@
+[package]
+name = "loquera-mvp"
+version = "0.1.0"
+description = "Notas Markdown locales con captura desde el navegador"
+authors = ["Loquera contributors"]
+edition = "2021"
+
+[lib]
+name = "loquera_mvp_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+axum = "0.8"
+chrono = { version = "0.4", features = ["clock"] }
+dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

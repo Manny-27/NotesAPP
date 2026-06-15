@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Guardar en Loquera</title>
+    <style>
+      :root {
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        color: #24261f;
+        background: #f3f4ed;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 330px;
+        margin: 0;
+        padding: 18px;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 1.65rem;
+        font-weight: 500;
+      }
+
+      .intro {
+        margin: 0 0 16px;
+        color: #73776a;
+        font-size: 0.76rem;
+      }
+
+      label {
+        display: grid;
+        gap: 5px;
+        margin-top: 11px;
+        font-size: 0.72rem;
+        font-weight: 750;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        border: 1px solid #cdd0c3;
+        border-radius: 7px;
+        outline: none;
+        background: #fff;
+        padding: 9px 10px;
+        font: inherit;
+        font-size: 0.82rem;
+      }
+
+      input:focus,
+      textarea:focus {
+        border-color: #6a714f;
+        box-shadow: 0 0 0 3px rgb(106 113 79 / 12%);
+      }
+
+      textarea {
+        min-height: 82px;
+        resize: vertical;
+      }
+
+      button {
+        width: 100%;
+        margin-top: 15px;
+        border: 0;
+        border-radius: 8px;
+        background: #292b25;
+        color: #fff;
+        padding: 10px;
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 750;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+
+      #status {
+        min-height: 18px;
+        margin: 10px 0 0;
+        color: #596044;
+        font-size: 0.74rem;
+        line-height: 1.45;
+      }
+
+      #status.error {
+        color: #a23f32;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Loquera</h1>
+    <p class="intro">Envía esta página a tus notas Markdown locales.</p>
+
+    <form id="capture-form">
+      <label>
+        Proyecto
+        <input id="project" name="project" value="Inbox" required />
+      </label>
+      <label>
+        Nota
+        <input id="note" name="note" value="Capturas" required />
+      </label>
+      <label>
+        Comentario
+        <textarea
+          id="comment"
+          name="comment"
+          placeholder="¿Por qué quieres guardar esto?"
+        ></textarea>
+      </label>
+      <button id="submit" type="submit">Guardar captura</button>
+    </form>
+    <p id="status" role="status"></p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
