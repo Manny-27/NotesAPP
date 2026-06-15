@@ -3,127 +3,175 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Guardar en Loquera</title>
+    <title>Loquera Capture</title>
     <style>
       :root {
+        color-scheme: light dark;
+        --background: #f8f8f7;
+        --foreground: #242424;
+        --sidebar: #eeeeec;
+        --surface: #ffffff;
+        --muted: #ececea;
+        --muted-foreground: #787872;
+        --border: #d9d9d5;
+        --hover: #e4e4e1;
+        --primary: #292a27;
+        --primary-foreground: #fafafa;
+        --accent: #77875b;
+        --danger: #c0443b;
         font-family:
           Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
           "Segoe UI", sans-serif;
-        color: #24261f;
-        background: #f3f4ed;
       }
-
-      * {
-        box-sizing: border-box;
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #1e1f1c;
+          --foreground: #dcddd7;
+          --sidebar: #191a18;
+          --surface: #262723;
+          --muted: #292a27;
+          --muted-foreground: #92958d;
+          --border: #353631;
+          --hover: #2b2c28;
+          --primary: #e2e3dd;
+          --primary-foreground: #1c1d1a;
+          --accent: #9cab79;
+          --danger: #e06e63;
+        }
       }
-
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
       body {
-        width: 330px;
-        margin: 0;
-        padding: 18px;
+        width: 390px; max-height: 590px; overflow-y: auto; padding: 0;
+        background: var(--background); color: var(--foreground);
       }
-
-      h1 {
-        margin: 0 0 4px;
-        font-family: Georgia, "Times New Roman", serif;
-        font-size: 1.65rem;
-        font-weight: 500;
+      button, input, select, textarea { font: inherit; }
+      .header {
+        position: sticky; top: 0; z-index: 5; display: flex; align-items: center;
+        justify-content: space-between; min-height: 48px; border-bottom: 1px solid var(--border);
+        background: color-mix(in srgb, var(--background) 92%, transparent); padding: 8px 12px;
+        backdrop-filter: blur(12px);
       }
-
-      .intro {
-        margin: 0 0 16px;
-        color: #73776a;
-        font-size: 0.76rem;
+      .brand { display: flex; align-items: center; gap: 9px; }
+      .mark {
+        display: grid; width: 28px; height: 28px; place-items: center;
+        border-radius: 8px; background: var(--primary); color: var(--primary-foreground);
+        font-family: Georgia, serif; font-size: .95rem; font-weight: 700;
       }
-
-      label {
-        display: grid;
-        gap: 5px;
-        margin-top: 11px;
-        font-size: 0.72rem;
-        font-weight: 750;
+      h1 { margin: 0; font-size: .82rem; font-weight: 700; }
+      .subtitle { margin: 1px 0 0; color: var(--muted-foreground); font-size: 0.58rem; }
+      .connection { display: flex; align-items: center; gap: 5px; color: var(--muted-foreground); font-size: 0.6rem; }
+      .connection span { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+      .connection.online span { background: #67a04b; }
+      .tabs {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+        margin: 12px; border-radius: 8px; background: var(--muted); padding: 3px;
       }
-
-      input,
-      textarea {
-        width: 100%;
-        border: 1px solid #cdd0c3;
-        border-radius: 7px;
-        outline: none;
-        background: #fff;
-        padding: 9px 10px;
-        font: inherit;
-        font-size: 0.82rem;
+      .tabs button {
+        border: 0; border-radius: 6px; background: transparent; color: var(--muted-foreground);
+        padding: 7px 4px; font-size: 0.64rem; font-weight: 700; cursor: pointer;
       }
-
-      input:focus,
-      textarea:focus {
-        border-color: #6a714f;
-        box-shadow: 0 0 0 3px rgb(106 113 79 / 12%);
+      .tabs button:hover { background: var(--hover); color: var(--foreground); }
+      .tabs button.active { background: var(--surface); color: var(--foreground); box-shadow: 0 1px 5px rgb(0 0 0 / 8%); }
+      .page-card {
+        overflow: hidden; margin: 0 12px; border: 1px solid var(--border); border-radius: 9px;
+        background: var(--surface);
       }
-
-      textarea {
-        min-height: 82px;
-        resize: vertical;
+      .page-card img { display: block; width: 100%; max-height: 132px; object-fit: cover; }
+      .page-info { padding: 9px 10px; }
+      .source { color: var(--accent); font-size: 0.56rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+      .page-title { margin: 3px 0; font-size: 0.74rem; font-weight: 700; line-height: 1.35; }
+      .page-url { overflow: hidden; color: var(--muted-foreground); font-size: 0.6rem; text-overflow: ellipsis; white-space: nowrap; }
+      .timestamp { display: inline-block; margin-top: 5px; border-radius: 5px; background: var(--muted); padding: 3px 6px; color: var(--accent); font-size: 0.58rem; font-weight: 800; }
+      .mode { display: none; margin: 12px; }
+      .mode.active { display: block; }
+      .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      label { display: grid; gap: 5px; margin-top: 9px; color: var(--muted-foreground); font-size: 0.62rem; font-weight: 700; }
+      input, select, textarea {
+        width: 100%; border: 1px solid var(--border); border-radius: 7px; outline: none;
+        background: var(--surface); color: var(--foreground); padding: 8px 9px; font-size: 0.72rem;
       }
-
-      button {
-        width: 100%;
-        margin-top: 15px;
-        border: 0;
-        border-radius: 8px;
-        background: #292b25;
-        color: #fff;
-        padding: 10px;
-        font: inherit;
-        font-size: 0.82rem;
-        font-weight: 750;
-        cursor: pointer;
+      input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
+      textarea { min-height: 70px; resize: vertical; line-height: 1.45; }
+      .new-note { display: none; }
+      .new-note.visible { display: grid; }
+      .preview {
+        margin-top: 10px; border-left: 2px solid var(--accent); border-radius: 0 6px 6px 0;
+        background: var(--muted); padding: 8px 9px; color: var(--muted-foreground); font-size: 0.64rem; line-height: 1.45;
       }
-
-      button:disabled {
-        cursor: wait;
-        opacity: 0.6;
+      .primary, .quick-button, .copy-button {
+        border: 0; border-radius: 8px; cursor: pointer; font-weight: 780;
       }
-
-      #status {
-        min-height: 18px;
-        margin: 10px 0 0;
-        color: #596044;
-        font-size: 0.74rem;
-        line-height: 1.45;
-      }
-
-      #status.error {
-        color: #a23f32;
-      }
+      .primary, .quick-button { width: 100%; margin-top: 12px; background: var(--primary); color: var(--primary-foreground); padding: 9px; font-size: 0.72rem; }
+      .quick-button { padding: 12px 10px; font-size: 0.76rem; }
+      .copy-button { margin: 0 12px 10px; background: var(--muted); color: var(--muted-foreground); padding: 6px 8px; font-size: 0.6rem; }
+      .primary:hover, .quick-button:hover { opacity: .9; }
+      .copy-button:hover { background: var(--hover); color: var(--foreground); }
+      button:disabled { cursor: wait; opacity: 0.55; }
+      #status { min-height: 18px; margin: 0 12px 10px; color: var(--accent); font-size: 0.64rem; line-height: 1.4; }
+      #status.error { color: var(--danger); }
+      .hint { margin: 8px 0 0; color: var(--muted-foreground); font-size: 0.62rem; line-height: 1.45; }
     </style>
   </head>
   <body>
-    <h1>Loquera</h1>
-    <p class="intro">Envía esta página a tus notas Markdown locales.</p>
+    <header class="header">
+      <div class="brand">
+        <span class="mark">L</span>
+        <div><h1>Loquera</h1><p class="subtitle">Captura sin romper el flujo</p></div>
+      </div>
+      <div id="connection" class="connection"><span></span><b>Conectando</b></div>
+    </header>
 
-    <form id="capture-form">
-      <label>
-        Proyecto
-        <input id="project" name="project" value="Inbox" required />
+    <nav class="tabs">
+      <button class="active" data-mode="quick">Captura rápida</button>
+      <button data-mode="send">Enviar a nota</button>
+      <button data-mode="note">Nota rápida</button>
+    </nav>
+
+    <section class="page-card">
+      <img id="thumbnail" alt="" hidden />
+      <div class="page-info">
+        <span id="source" class="source">Página web</span>
+        <p id="page-title" class="page-title">Leyendo pestaña...</p>
+        <p id="page-url" class="page-url"></p>
+        <span id="timestamp" class="timestamp" hidden></span>
+      </div>
+    </section>
+
+    <section id="quick-mode" class="mode active">
+      <button id="quick-capture" class="quick-button">Guardar en Inbox / Capturas</button>
+      <p class="hint">Guarda título, enlace, selección y timestamp de YouTube.</p>
+    </section>
+
+    <section id="send-mode" class="mode">
+      <div class="field-grid">
+        <label>Proyecto<select id="send-project"></select></label>
+        <label>Nota<select id="send-note"></select></label>
+      </div>
+      <label id="send-new-wrap" class="new-note">
+        Nombre de la nueva nota
+        <input id="send-new-note" placeholder="Nueva captura" />
       </label>
-      <label>
-        Nota
-        <input id="note" name="note" value="Capturas" required />
+      <label>Comentario<textarea id="send-comment" placeholder="¿Por qué guardas esto?"></textarea></label>
+      <div id="capture-preview" class="preview">La captura se agregará al final de la nota.</div>
+      <button id="send-capture" class="primary">Guardar captura</button>
+    </section>
+
+    <section id="note-mode" class="mode">
+      <div class="field-grid">
+        <label>Proyecto<select id="quick-project"></select></label>
+        <label>Nota<select id="quick-note"></select></label>
+      </div>
+      <label id="quick-new-wrap" class="new-note">
+        Nombre de la nueva nota
+        <input id="quick-new-note" placeholder="Ideas rápidas" />
       </label>
-      <label>
-        Comentario
-        <textarea
-          id="comment"
-          name="comment"
-          placeholder="¿Por qué quieres guardar esto?"
-        ></textarea>
-      </label>
-      <button id="submit" type="submit">Guardar captura</button>
-    </form>
+      <label>Tu idea<textarea id="quick-text" placeholder="Escribe una idea breve..."></textarea></label>
+      <button id="save-quick-note" class="primary">Guardar nota rápida</button>
+    </section>
+
+    <button id="copy-url" class="copy-button">Copiar URL</button>
     <p id="status" role="status"></p>
-
     <script src="popup.js"></script>
   </body>
 </html>

@@ -1,6 +1,7 @@
 mod local_server;
 mod storage;
 
+use local_server::EventBus;
 use storage::Storage;
 
 #[tauri::command]
@@ -9,10 +10,16 @@ fn list_projects(storage: tauri::State<'_, Storage>) -> Result<Vec<String>, Stri
 }
 
 #[tauri::command]
-fn create_project(storage: tauri::State<'_, Storage>, name: String) -> Result<String, String> {
-    storage
+fn create_project(
+    storage: tauri::State<'_, Storage>,
+    events: tauri::State<'_, EventBus>,
+    name: String,
+) -> Result<String, String> {
+    let project = storage
         .create_project(&name)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    events.notify("project:created", Some(project.clone()), None);
+    Ok(project)
 }
 
 #[tauri::command]
@@ -36,25 +43,35 @@ fn read_note(
 #[tauri::command]
 fn create_note(
     storage: tauri::State<'_, Storage>,
+    events: tauri::State<'_, EventBus>,
     project: String,
     title: String,
     content: String,
 ) -> Result<String, String> {
-    storage
+    let note = storage
         .create_note(&project, &title, &content)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    events.notify("note:created", Some(project), Some(note.clone()));
+    Ok(note)
 }
 
 #[tauri::command]
 fn save_note(
     storage: tauri::State<'_, Storage>,
+    events: tauri::State<'_, EventBus>,
     project: String,
     note: String,
     content: String,
-) -> Result<(), String> {
-    storage
+) -> Result<storage::SaveOutcome, String> {
+    let outcome = storage
         .save_note(&project, &note, &content)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    if outcome.renamed {
+        events.renamed(project, note, outcome.note.clone());
+    } else {
+        events.notify("note:saved", Some(project), Some(outcome.note.clone()));
+    }
+    Ok(outcome)
 }
 
 #[tauri::command]
@@ -66,12 +83,15 @@ fn get_notes_root(storage: tauri::State<'_, Storage>) -> String {
 pub fn run() {
     let storage = Storage::default().expect("no se pudo inicializar la carpeta de notas");
     let server_storage = storage.clone();
+    let events = EventBus::new();
+    let server_events = events.clone();
 
     tauri::Builder::default()
         .manage(storage)
+        .manage(events)
         .setup(move |_app| {
             tauri::async_runtime::spawn(async move {
-                if let Err(error) = local_server::serve(server_storage).await {
+                if let Err(error) = local_server::serve(server_storage, server_events).await {
                     eprintln!("El servidor local no pudo iniciar: {error}");
                 }
             });
