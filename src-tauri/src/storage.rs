@@ -18,6 +18,13 @@ pub struct CaptureRequest {
     pub note: String,
     pub title: String,
     pub url: String,
+    pub description: Option<String>,
+    pub canonical_url: Option<String>,
+    pub domain: Option<String>,
+    pub site_name: Option<String>,
+    pub image_url: Option<String>,
+    pub favicon_url: Option<String>,
+    pub youtube_video_id: Option<String>,
     pub selected_text: Option<String>,
     pub comment: Option<String>,
     pub youtube_timestamp: Option<f64>,
@@ -37,6 +44,51 @@ pub struct MoveOutcome {
     pub from_project: String,
     pub to_project: String,
     pub note: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardItem {
+    pub id: String,
+    pub kind: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    #[serde(default)]
+    pub pinned: bool,
+    pub pinned_x: Option<f64>,
+    pub pinned_y: Option<f64>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub url: Option<String>,
+    pub canonical_url: Option<String>,
+    pub domain: Option<String>,
+    pub site_name: Option<String>,
+    pub image_url: Option<String>,
+    pub favicon_url: Option<String>,
+    pub selected_text: Option<String>,
+    pub video_id: Option<String>,
+    pub timestamp: Option<f64>,
+    pub thumbnail_url: Option<String>,
+    pub language: Option<String>,
+    pub code: Option<String>,
+    pub note: Option<String>,
+    pub text: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardDocument {
+    pub schema_version: u32,
+    pub r#type: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub items: Vec<BoardItem>,
+    #[serde(default)]
+    pub snapshot: Option<serde_json::Value>,
 }
 
 impl Storage {
@@ -104,6 +156,30 @@ impl Storage {
         Ok(notes)
     }
 
+    pub fn list_boards(&self, project: &str) -> io::Result<Vec<String>> {
+        let project = sanitize_name(project)?;
+        let directory = self.root.join(project);
+        if !directory.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut boards = fs::read_dir(directory)?
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_type()
+                    .map(|kind| kind.is_file())
+                    .unwrap_or(false)
+            })
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                name.strip_suffix(".loqboard.json").map(str::to_string)
+            })
+            .collect::<Vec<_>>();
+        boards.sort_by_key(|name| name.to_lowercase());
+        Ok(boards)
+    }
+
     pub fn read_note(&self, project: &str, note: &str) -> io::Result<String> {
         fs::read_to_string(self.note_path(project, note)?)
     }
@@ -122,6 +198,63 @@ impl Storage {
 
         fs::write(path, content)?;
         Ok(note)
+    }
+
+    pub fn create_board(&self, project: &str, title: &str) -> io::Result<String> {
+        let project = self.create_project(project)?;
+        let board = sanitize_name(title)?;
+        let path = self
+            .root
+            .join(project)
+            .join(format!("{board}.loqboard.json"));
+
+        if path.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "ya existe una pizarra con ese nombre",
+            ));
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let document = BoardDocument {
+            schema_version: 1,
+            r#type: "loqboard".to_string(),
+            title: board.clone(),
+            created_at: now.clone(),
+            updated_at: now,
+            items: Vec::new(),
+            snapshot: None,
+        };
+        self.write_board_document(&path, &document)?;
+        Ok(board)
+    }
+
+    pub fn read_board(&self, project: &str, board: &str) -> io::Result<BoardDocument> {
+        let path = self.board_path(project, board)?;
+        let content = fs::read_to_string(path)?;
+        serde_json::from_str(&content)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+    }
+
+    pub fn save_board(
+        &self,
+        project: &str,
+        board: &str,
+        document: &BoardDocument,
+    ) -> io::Result<()> {
+        let path = self.board_path(project, board)?;
+        let mut next = document.clone();
+        next.schema_version = 1;
+        next.r#type = "loqboard".to_string();
+        next.title = sanitize_name(&next.title)?;
+        next.updated_at = chrono::Utc::now().to_rfc3339();
+        self.write_board_document(&path, &next)
+    }
+
+    pub fn append_board_item(&self, project: &str, board: &str, item: BoardItem) -> io::Result<()> {
+        let mut document = self.read_board(project, board)?;
+        document.items.push(item);
+        self.save_board(project, board, &document)
     }
 
     pub fn save_note(&self, project: &str, note: &str, content: &str) -> io::Result<SaveOutcome> {
@@ -261,6 +394,21 @@ impl Storage {
         let note = sanitize_note_name(note)?;
         Ok(self.root.join(project).join(format!("{note}.md")))
     }
+
+    fn board_path(&self, project: &str, board: &str) -> io::Result<PathBuf> {
+        let project = sanitize_name(project)?;
+        let board = sanitize_name(board)?;
+        Ok(self
+            .root
+            .join(project)
+            .join(format!("{board}.loqboard.json")))
+    }
+
+    fn write_board_document(&self, path: &Path, document: &BoardDocument) -> io::Result<()> {
+        let content = serde_json::to_string_pretty(document)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+        fs::write(path, content)
+    }
 }
 
 fn sanitize_note_name(value: &str) -> io::Result<String> {
@@ -302,7 +450,10 @@ fn sanitize_name(value: &str) -> io::Result<String> {
     Ok(sanitized)
 }
 
+#[allow(unreachable_code)]
 fn format_capture(capture: &CaptureRequest, captured_at: DateTime<Local>) -> String {
+    return format_capture_enriched(capture, captured_at);
+
     let youtube_id = youtube_video_id(&capture.url);
     let timestamp = capture
         .youtube_timestamp
@@ -347,6 +498,81 @@ fn format_capture(capture: &CaptureRequest, captured_at: DateTime<Local>) -> Str
             .collect::<Vec<_>>()
             .join("\n");
         markdown.push_str(&format!("\n### Texto seleccionado\n\n{quoted}\n"));
+    }
+
+    if let Some(comment) = non_empty(capture.comment.as_deref()) {
+        markdown.push_str(&format!("\n### Comentario\n\n{}\n", comment.trim()));
+    }
+
+    markdown.push_str("\n---\n");
+    markdown
+}
+
+fn format_capture_enriched(capture: &CaptureRequest, captured_at: DateTime<Local>) -> String {
+    let youtube_id = capture
+        .youtube_video_id
+        .as_deref()
+        .and_then(|id| valid_youtube_id(id).then_some(id.to_string()))
+        .or_else(|| youtube_video_id(&capture.url));
+    let timestamp = capture
+        .youtube_timestamp
+        .filter(|value| value.is_finite())
+        .map(|seconds| seconds.max(0.0).floor() as u64);
+    let display_url = youtube_id
+        .as_ref()
+        .map(|video_id| youtube_url(video_id, timestamp))
+        .or_else(|| non_empty(capture.canonical_url.as_deref()).map(str::to_string))
+        .unwrap_or_else(|| capture.url.trim().to_string());
+    let mut markdown = format!("## Captura - {}\n\n", captured_at.format("%Y-%m-%d %H:%M"));
+
+    if let Some(video_id) = &youtube_id {
+        markdown.push_str(&format!(
+            "[![{}](https://img.youtube.com/vi/{video_id}/hqdefault.jpg)]({display_url})\n\n",
+            escape_markdown_alt(capture.title.trim())
+        ));
+    } else if let Some(image_url) = non_empty(capture.image_url.as_deref()) {
+        markdown.push_str(&format!("![Preview]({})\n\n", image_url.trim()));
+    }
+
+    markdown.push_str(&format!("**Titulo:** {}  \n", capture.title.trim()));
+    if let Some(site_name) = non_empty(capture.site_name.as_deref()) {
+        markdown.push_str(&format!("**Sitio:** {}  \n", site_name.trim()));
+    }
+    if let Some(favicon_url) = non_empty(capture.favicon_url.as_deref()) {
+        markdown.push_str(&format!("**Icono:** {}  \n", favicon_url.trim()));
+    }
+    let domain = non_empty(capture.domain.as_deref())
+        .map(str::to_string)
+        .or_else(|| link_domain(&display_url));
+    if let Some(domain) = domain {
+        markdown.push_str(&format!("**Dominio:** {domain}  \n"));
+    }
+    markdown.push_str(&format!("**URL:** {display_url}  \n"));
+
+    if youtube_id.is_some() {
+        markdown.push_str("**Origen:** YouTube  \n");
+    }
+    if let Some(seconds) = timestamp {
+        markdown.push_str(&format!(
+            "**Timestamp:** {}  \n",
+            format_timestamp(seconds as f64)
+        ));
+    }
+
+    if let Some(selected_text) = non_empty(capture.selected_text.as_deref()) {
+        let quoted = selected_text
+            .lines()
+            .map(|line| format!("> {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        markdown.push_str(&format!("\n### Texto seleccionado\n\n{quoted}\n"));
+    } else if let Some(description) = non_empty(capture.description.as_deref()) {
+        let quoted = description
+            .lines()
+            .map(|line| format!("> {line}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        markdown.push_str(&format!("\n### Descripcion\n\n{quoted}\n"));
     }
 
     if let Some(comment) = non_empty(capture.comment.as_deref()) {
@@ -504,6 +730,13 @@ mod tests {
             note: "Capturas".into(),
             title: "Video".into(),
             url: "https://youtu.be/dQw4w9WgXcQ".into(),
+            description: None,
+            canonical_url: None,
+            domain: None,
+            site_name: None,
+            image_url: None,
+            favicon_url: None,
+            youtube_video_id: None,
             selected_text: None,
             comment: None,
             youtube_timestamp: Some(123.0),
@@ -549,5 +782,55 @@ mod tests {
             "# Existe\n\nNuevo contenido"
         );
         assert_eq!(storage.read_note("Ideas", "Existe").unwrap(), "# Existe");
+    }
+
+    #[test]
+    fn creates_reads_and_appends_board_items() {
+        let temp = tempfile::tempdir().unwrap();
+        let storage = Storage::new(temp.path().join("Loquera")).unwrap();
+        let board = storage.create_board("Inbox", "Clase YouTube").unwrap();
+        assert_eq!(board, "Clase YouTube");
+        assert_eq!(storage.list_boards("Inbox").unwrap(), vec!["Clase YouTube"]);
+
+        storage
+            .append_board_item(
+                "Inbox",
+                "Clase YouTube",
+                BoardItem {
+                    id: "item_123".into(),
+                    kind: "youtube".into(),
+                    x: 120.0,
+                    y: 80.0,
+                    width: 420.0,
+                    height: 340.0,
+                    pinned: false,
+                    pinned_x: None,
+                    pinned_y: None,
+                    title: Some("Video".into()),
+                    description: None,
+                    url: Some("https://youtube.com/watch?v=dQw4w9WgXcQ".into()),
+                    canonical_url: None,
+                    domain: None,
+                    site_name: None,
+                    image_url: None,
+                    favicon_url: None,
+                    selected_text: None,
+                    video_id: Some("dQw4w9WgXcQ".into()),
+                    timestamp: Some(123.0),
+                    thumbnail_url: Some(
+                        "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg".into(),
+                    ),
+                    language: None,
+                    code: None,
+                    note: Some("Comentario".into()),
+                    text: None,
+                },
+            )
+            .unwrap();
+
+        let document = storage.read_board("Inbox", "Clase YouTube").unwrap();
+        assert_eq!(document.r#type, "loqboard");
+        assert_eq!(document.items.len(), 1);
+        assert_eq!(document.items[0].kind, "youtube");
     }
 }

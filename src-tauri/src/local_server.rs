@@ -1,4 +1,4 @@
-use crate::storage::{CaptureRequest, Storage};
+use crate::storage::{BoardDocument, BoardItem, CaptureRequest, Storage};
 use axum::{
     extract::{Path, State},
     http::{Method, StatusCode},
@@ -108,8 +108,23 @@ struct CreateNoteRequest {
 }
 
 #[derive(Deserialize)]
+struct CreateBoardRequest {
+    title: String,
+}
+
+#[derive(Deserialize)]
 struct SaveNoteRequest {
     content: String,
+}
+
+#[derive(Deserialize)]
+struct SaveBoardRequest {
+    board: BoardDocument,
+}
+
+#[derive(Deserialize)]
+struct AppendBoardItemRequest {
+    item: BoardItem,
 }
 
 #[derive(Deserialize)]
@@ -155,8 +170,20 @@ fn router(storage: Storage, events: EventBus) -> Router {
             get(list_notes).post(create_note),
         )
         .route(
+            "/api/projects/{project}/boards",
+            get(list_boards).post(create_board),
+        )
+        .route(
             "/api/projects/{project}/notes/{note}",
             get(read_note).put(save_note).delete(delete_note),
+        )
+        .route(
+            "/api/projects/{project}/boards/{board}",
+            get(read_board).put(save_board),
+        )
+        .route(
+            "/api/projects/{project}/boards/{board}/items",
+            post(append_board_item),
         )
         .route(
             "/api/projects/{project}/notes/{note}/rename",
@@ -220,6 +247,18 @@ async fn list_notes(
     )
 }
 
+async fn list_boards(
+    State(state): State<Arc<AppState>>,
+    Path(project): Path<String>,
+) -> impl IntoResponse {
+    json_result(
+        state
+            .storage
+            .list_boards(&project)
+            .map(|boards| json!({ "boards": boards })),
+    )
+}
+
 async fn read_note(
     State(state): State<Arc<AppState>>,
     Path((project, note)): Path<(String, String)>,
@@ -248,6 +287,71 @@ async fn create_note(
                 StatusCode::CREATED,
                 Json(json!({ "ok": true, "project": project, "note": note })),
             )
+        }
+        Err(error) => api_error(error),
+    }
+}
+
+async fn create_board(
+    State(state): State<Arc<AppState>>,
+    Path(project): Path<String>,
+    Json(payload): Json<CreateBoardRequest>,
+) -> impl IntoResponse {
+    match state.storage.create_board(&project, &payload.title) {
+        Ok(board) => {
+            let project = state.storage.create_project(&project).unwrap_or(project);
+            state
+                .events
+                .notify("board:created", Some(project.clone()), Some(board.clone()));
+            (
+                StatusCode::CREATED,
+                Json(json!({ "ok": true, "project": project, "board": board })),
+            )
+        }
+        Err(error) => api_error(error),
+    }
+}
+
+async fn read_board(
+    State(state): State<Arc<AppState>>,
+    Path((project, board)): Path<(String, String)>,
+) -> impl IntoResponse {
+    match state.storage.read_board(&project, &board) {
+        Ok(board) => (StatusCode::OK, Json(json!({ "board": board }))),
+        Err(error) => api_error(error),
+    }
+}
+
+async fn save_board(
+    State(state): State<Arc<AppState>>,
+    Path((project, board)): Path<(String, String)>,
+    Json(payload): Json<SaveBoardRequest>,
+) -> impl IntoResponse {
+    match state.storage.save_board(&project, &board, &payload.board) {
+        Ok(()) => {
+            state
+                .events
+                .notify("board:saved", Some(project), Some(board));
+            (StatusCode::OK, Json(json!({ "ok": true })))
+        }
+        Err(error) => api_error(error),
+    }
+}
+
+async fn append_board_item(
+    State(state): State<Arc<AppState>>,
+    Path((project, board)): Path<(String, String)>,
+    Json(payload): Json<AppendBoardItemRequest>,
+) -> impl IntoResponse {
+    match state
+        .storage
+        .append_board_item(&project, &board, payload.item)
+    {
+        Ok(()) => {
+            state
+                .events
+                .notify("board:item-added", Some(project), Some(board));
+            (StatusCode::OK, Json(json!({ "ok": true })))
         }
         Err(error) => api_error(error),
     }
@@ -575,5 +679,51 @@ mod tests {
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(payload["renamed"], true);
         assert_eq!(payload["note"], "Nueva");
+    }
+
+    #[tokio::test]
+    async fn exposes_board_crud_over_http() {
+        let (_temp, _storage, _events, app) = test_app();
+        let created = json_request(
+            app.clone(),
+            Method::POST,
+            "/api/projects/Inbox/boards",
+            json!({ "title": "Clase YouTube" }),
+        )
+        .await;
+        assert_eq!(created.status(), StatusCode::CREATED);
+
+        let appended = json_request(
+            app.clone(),
+            Method::POST,
+            "/api/projects/Inbox/boards/Clase%20YouTube/items",
+            json!({
+                "item": {
+                    "id": "item_123",
+                    "kind": "text",
+                    "x": 120,
+                    "y": 80,
+                    "width": 260,
+                    "height": 160,
+                    "text": "Idea"
+                }
+            }),
+        )
+        .await;
+        assert_eq!(appended.status(), StatusCode::OK);
+
+        let read = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/projects/Inbox/boards/Clase%20YouTube")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(read.status(), StatusCode::OK);
+        let body = to_bytes(read.into_body(), usize::MAX).await.unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("\"loqboard\""));
+        assert!(String::from_utf8_lossy(&body).contains("\"Idea\""));
     }
 }

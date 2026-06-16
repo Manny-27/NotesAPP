@@ -1,4 +1,4 @@
-import { ChevronsDownUp, FilePlus2, FolderPlus } from "lucide-react";
+import { ChevronsDownUp, FilePlus2, FolderPlus, PencilRuler } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   ContextMenu,
@@ -12,12 +12,14 @@ export function SidebarContextMenu({
   children,
   canCreateNote,
   onCreateNote,
+  onCreateBoard,
   onCreateProject,
   onCollapseAll,
 }: {
   children: ReactNode;
   canCreateNote: boolean;
   onCreateNote: () => void;
+  onCreateBoard: () => void;
   onCreateProject: () => void;
   onCollapseAll: () => void;
 }) {
@@ -27,6 +29,9 @@ export function SidebarContextMenu({
       <ContextMenuContent>
         <ContextMenuItem disabled={!canCreateNote} onSelect={onCreateNote}>
           <FilePlus2 size={14} /> Nueva nota
+        </ContextMenuItem>
+        <ContextMenuItem disabled={!canCreateNote} onSelect={onCreateBoard}>
+          <PencilRuler size={14} /> Nueva pizarra
         </ContextMenuItem>
         <ContextMenuItem onSelect={onCreateProject}>
           <FolderPlus size={14} /> Nueva carpeta

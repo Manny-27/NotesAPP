@@ -212,3 +212,30 @@ muestra un error de conexión.
 
 La referencia técnica y el registro de continuidad están en
 [`manifest.md`](manifest.md).
+
+## Pizarras y previews enriquecidos
+
+Las pizarras se guardan junto a las notas como:
+
+```text
+~/Documents/Loquera/<proyecto>/<pizarra>.loqboard.json
+```
+
+En una pizarra puedes dibujar con tldraw, agregar tarjetas de texto, pegar URLs
+de YouTube o enlaces normales, y crear tarjetas de codigo. Las tarjetas se
+mueven desde su encabezado y se redimensionan con el handle de la esquina
+inferior derecha. Mantener `Shift` durante el resize conserva la proporcion.
+
+Cada tarjeta tiene un candado para fijar/desfijar. Una tarjeta fijada queda en
+la capa de pantalla del board, util para dejar un video o referencia visible
+mientras organizas el resto.
+
+Las tarjetas de codigo permiten editar titulo, elegir lenguaje, escribir codigo
+monoespaciado y copiarlo. El resaltado avanzado queda pendiente; por ahora se
+usa un bloque `pre/code` sobrio y compatible con tema claro/oscuro.
+
+La extension incluye modo **Pizarra**. Puede enviar YouTube o cualquier pagina
+web normal a una pizarra existente o nueva. Para enlaces normales intenta leer
+metadata local de la pagina activa: Open Graph, Twitter cards, canonical,
+favicon, dominio, descripcion y texto seleccionado. No hay scraping externo ni
+fetch desde backend.

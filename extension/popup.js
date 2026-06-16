@@ -72,6 +72,26 @@ async function readPage() {
       $("#timestamp").hidden = false;
     }
   }
+  {
+    const id = state.page.youtubeVideoId || youtubeId(tab.url);
+    $("#page-title").textContent = state.page.title || tab.title || "Página sin título";
+    $("#page-url").textContent = state.page.description || state.page.canonicalUrl || tab.url;
+    $("#source").textContent = state.page.siteName || state.page.domain || "Página web";
+    $("#thumbnail").hidden = true;
+    $("#timestamp").hidden = true;
+    if (id) {
+      $("#source").textContent = "YouTube";
+      $("#thumbnail").src = `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+      $("#thumbnail").hidden = false;
+      if (state.page.youtubeTimestamp != null) {
+        $("#timestamp").textContent = `Timestamp ${formatTime(state.page.youtubeTimestamp)}`;
+        $("#timestamp").hidden = false;
+      }
+    } else if (state.page.imageUrl) {
+      $("#thumbnail").src = state.page.imageUrl;
+      $("#thumbnail").hidden = false;
+    }
+  }
   updatePreview();
 }
 
@@ -93,9 +113,22 @@ async function loadNotes(project, select, preferred = "Capturas") {
   toggleNewNote(select);
 }
 
+async function loadBoards(project, select, preferred = "Recursos") {
+  const { boards } = await request(`/projects/${segment(project)}/boards`);
+  select.innerHTML = "";
+  boards.forEach((board) => select.add(new Option(board, board)));
+  select.add(new Option("+ Crear pizarra nueva", "__new__"));
+  if (boards.includes(preferred)) select.value = preferred;
+  toggleNewBoard(select);
+}
+
 function toggleNewNote(select) {
   const prefix = select.id === "send-note" ? "send" : "quick";
   $(`#${prefix}-new-wrap`).classList.toggle("visible", select.value === "__new__");
+}
+
+function toggleNewBoard(select) {
+  $("#board-new-wrap").classList.toggle("visible", select.value === "__new__");
 }
 
 async function loadLibrary() {
@@ -109,12 +142,13 @@ async function loadLibrary() {
     state.projects.push("Inbox");
     state.projects.sort();
   }
-  for (const id of ["send-project", "quick-project"]) {
+  for (const id of ["send-project", "quick-project", "board-project"]) {
     fillProjectSelect($(`#${id}`));
   }
   await Promise.all([
     loadNotes($("#send-project").value, $("#send-note")),
     loadNotes($("#quick-project").value, $("#quick-note")),
+    loadBoards($("#board-project").value, $("#board-select")),
   ]);
   $("#connection").classList.add("online");
   $("#connection b").textContent = "Conectado";
@@ -129,6 +163,15 @@ function capturePayload(project, note, comment = null) {
     selectedText: state.page.selectedText ?? null,
     comment: comment || null,
     youtubeTimestamp: state.page.youtubeTimestamp ?? null,
+    title: state.page.title || state.tab?.title || "Página sin título",
+    url: state.page.url || state.tab?.url || "",
+    description: state.page.description ?? null,
+    canonicalUrl: state.page.canonicalUrl ?? null,
+    domain: state.page.domain ?? null,
+    siteName: state.page.siteName ?? null,
+    imageUrl: state.page.imageUrl ?? null,
+    faviconUrl: state.page.faviconUrl ?? null,
+    youtubeVideoId: state.page.youtubeVideoId ?? youtubeId(state.tab?.url || ""),
   };
 }
 
@@ -141,6 +184,74 @@ async function ensureNewNote(project, select, input) {
     body: JSON.stringify({ title, content: `# ${title}\n\n` }),
   });
   return result.note;
+}
+
+async function ensureNewBoard(project, select, input) {
+  if (select.value !== "__new__") return select.value;
+  const title = input.value.trim();
+  if (!title) throw new Error("Escribe un nombre para la nueva pizarra.");
+  const result = await request(`/projects/${segment(project)}/boards`, {
+    method: "POST",
+    body: JSON.stringify({ title }),
+  });
+  return result.board;
+}
+
+function boardYoutubeItem(comment = "") {
+  const url = state.tab?.url || "";
+  const videoId = youtubeId(url);
+  if (!videoId) throw new Error("La pestaña actual no parece ser un video de YouTube.");
+  const timestamp = state.page.youtubeTimestamp ?? null;
+  const canonical = timestamp
+    ? `https://youtube.com/watch?v=${videoId}&t=${Math.floor(timestamp)}s`
+    : `https://youtube.com/watch?v=${videoId}`;
+  return {
+    id: `item_${crypto.randomUUID()}`,
+    kind: "youtube",
+    x: 120,
+    y: 80,
+    width: 420,
+    height: 340,
+    title: state.tab?.title || "Video de YouTube",
+    url: canonical,
+    videoId,
+    timestamp,
+    thumbnailUrl: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+    note: comment || "",
+  };
+}
+
+function boardCaptureItem(comment = "") {
+  const url = state.page.canonicalUrl || state.page.url || state.tab?.url || "";
+  const videoId = state.page.youtubeVideoId || youtubeId(url);
+  const timestamp = state.page.youtubeTimestamp ?? null;
+  const canonical = videoId && timestamp
+    ? `https://youtube.com/watch?v=${videoId}&t=${Math.floor(timestamp)}s`
+    : videoId
+      ? `https://youtube.com/watch?v=${videoId}`
+      : url;
+  return {
+    id: `item_${crypto.randomUUID()}`,
+    kind: videoId ? "youtube" : "link",
+    x: 120,
+    y: 80,
+    width: 420,
+    height: videoId ? 340 : 280,
+    pinned: false,
+    title: state.page.title || state.tab?.title || "Enlace",
+    description: state.page.description ?? null,
+    url: canonical,
+    canonicalUrl: canonical,
+    domain: state.page.domain ?? null,
+    siteName: state.page.siteName ?? null,
+    imageUrl: state.page.imageUrl ?? null,
+    faviconUrl: state.page.faviconUrl ?? null,
+    selectedText: state.page.selectedText ?? null,
+    videoId: videoId || null,
+    timestamp,
+    thumbnailUrl: videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null,
+    note: comment || "",
+  };
 }
 
 async function saveCapture(project, note, comment) {
@@ -181,8 +292,14 @@ $("#quick-project").addEventListener("change", (event) =>
     setStatus(error.message, true),
   ),
 );
+$("#board-project").addEventListener("change", (event) =>
+  loadBoards(event.target.value, $("#board-select")).catch((error) =>
+    setStatus(error.message, true),
+  ),
+);
 $("#send-note").addEventListener("change", (event) => toggleNewNote(event.target));
 $("#quick-note").addEventListener("change", (event) => toggleNewNote(event.target));
+$("#board-select").addEventListener("change", (event) => toggleNewBoard(event.target));
 $("#send-comment").addEventListener("input", updatePreview);
 
 $("#quick-capture").addEventListener("click", async (event) => {
@@ -229,6 +346,27 @@ $("#save-quick-note").addEventListener("click", async (event) => {
     });
     $("#quick-text").value = "";
     setStatus(`Nota rápida guardada en ${project} / ${note}.`);
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    event.target.disabled = false;
+  }
+});
+
+$("#send-board").addEventListener("click", async (event) => {
+  event.target.disabled = true;
+  try {
+    const project = $("#board-project").value;
+    const board = await ensureNewBoard(project, $("#board-select"), $("#board-new"));
+    await request(`/projects/${segment(project)}/boards/${segment(board)}/items`, {
+      method: "POST",
+      body: JSON.stringify({
+        item: boardCaptureItem($("#board-note").value.trim()),
+      }),
+    });
+    $("#board-note").value = "";
+    setStatus(`Video enviado a ${project} / ${board}.`);
+    await loadBoards(project, $("#board-select"), board);
   } catch (error) {
     setStatus(error.message, true);
   } finally {

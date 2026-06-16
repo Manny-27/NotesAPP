@@ -64,7 +64,7 @@
       .connection span { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
       .connection.online span { background: #67a04b; }
       .tabs {
-        display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+        display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
         margin: 12px; border-radius: 8px; background: var(--muted); padding: 3px;
       }
       .tabs button {
@@ -126,6 +126,7 @@
       <button class="active" data-mode="quick">Captura rápida</button>
       <button data-mode="send">Enviar a nota</button>
       <button data-mode="note">Nota rápida</button>
+      <button data-mode="board">Pizarra</button>
     </nav>
 
     <section class="page-card">
@@ -168,6 +169,20 @@
       </label>
       <label>Tu idea<textarea id="quick-text" placeholder="Escribe una idea breve..."></textarea></label>
       <button id="save-quick-note" class="primary">Guardar nota rápida</button>
+    </section>
+
+    <section id="board-mode" class="mode">
+      <div class="field-grid">
+        <label>Proyecto<select id="board-project"></select></label>
+        <label>Pizarra<select id="board-select"></select></label>
+      </div>
+      <label id="board-new-wrap" class="new-note">
+        Nombre de la nueva pizarra
+        <input id="board-new" placeholder="Clase YouTube" />
+      </label>
+      <label>Nota para el video<textarea id="board-note" placeholder="Contexto, idea o minuto importante..."></textarea></label>
+      <div id="board-preview" class="preview">Se agregará un video de YouTube como tarjeta movible.</div>
+      <button id="send-board" class="primary">Enviar a pizarra</button>
     </section>
 
     <button id="copy-url" class="copy-button">Copiar URL</button>

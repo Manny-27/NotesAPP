@@ -18,6 +18,7 @@ import {
   GripVertical,
   MoreHorizontal,
   Moon,
+  PencilRuler,
   Pencil,
   Settings,
   Sun,
@@ -27,7 +28,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Toaster, toast } from "sonner";
-import { api, type NotesChangedEvent } from "./api";
+import { api, type BoardDocument, type NotesChangedEvent } from "./api";
+import { BoardCanvas } from "./components/BoardCanvas";
 import { EditorContextMenu } from "./components/EditorContextMenu";
 import { EditorToolbar } from "./components/EditorToolbar";
 import { NoteContextMenu } from "./components/NoteContextMenu";
@@ -64,6 +66,7 @@ type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 type Modal =
   | { type: "project" }
   | { type: "note"; project: string }
+  | { type: "board"; project: string }
   | { type: "rename"; project: string; note: string }
   | { type: "delete"; project: string; note: string }
   | { type: "settings" }
@@ -79,6 +82,30 @@ interface NoteTreeItemProps {
   onDuplicate: () => void;
   onMove: (project: string) => void;
   projects: string[];
+}
+
+interface BoardTreeItemProps {
+  board: string;
+  selected: boolean;
+  onSelect: () => void;
+}
+
+function BoardTreeItem({ board, selected, onSelect }: BoardTreeItemProps) {
+  return (
+    <div
+      className={cn(
+        "group flex h-7 items-center gap-1 rounded-md pl-10 pr-1 text-[12px] text-[var(--muted-foreground)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]",
+        selected && "bg-[var(--selected)] text-[var(--foreground)]",
+      )}
+      onClick={onSelect}
+    >
+      <PencilRuler size={14} className="shrink-0 text-[var(--folder)] opacity-85" />
+      <span className="min-w-0 flex-1 truncate">{board}</span>
+      <span className="rounded bg-[var(--muted)] px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-[var(--muted-foreground)]">
+        Board
+      </span>
+    </div>
+  );
 }
 
 function NoteTreeItem({
@@ -163,12 +190,15 @@ function NoteTreeItem({
 function ProjectTreeItem({
   project,
   notes,
+  boards,
   expanded,
   selectedProject,
   selectedNote,
+  selectedBoard,
   onToggle,
   onSelectNote,
   onNewNote,
+  onSelectBoard,
   onRename,
   onDelete,
   onDuplicate,
@@ -177,11 +207,14 @@ function ProjectTreeItem({
 }: {
   project: string;
   notes: string[];
+  boards: string[];
   expanded: boolean;
   selectedProject: string;
   selectedNote: string;
+  selectedBoard: string;
   onToggle: () => void;
   onSelectNote: (note: string) => void;
+  onSelectBoard: (board: string) => void;
   onNewNote: () => void;
   onRename: (note: string) => void;
   onDelete: (note: string) => void;
@@ -244,6 +277,14 @@ function ProjectTreeItem({
               Sin notas
             </p>
           )}
+          {boards.map((board) => (
+            <BoardTreeItem
+              key={board}
+              board={board}
+              selected={selectedProject === project && selectedBoard === board}
+              onSelect={() => onSelectBoard(board)}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -266,11 +307,16 @@ export default function App() {
   const [notesByProject, setNotesByProject] = useState<Record<string, string[]>>(
     {},
   );
+  const [boardsByProject, setBoardsByProject] = useState<Record<string, string[]>>(
+    {},
+  );
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(JSON.parse(localStorage.getItem("loquera-expanded") || "[]")),
   );
   const [selectedProject, setSelectedProject] = useState("");
   const [selectedNote, setSelectedNote] = useState("");
+  const [selectedBoard, setSelectedBoard] = useState("");
+  const [boardContent, setBoardContent] = useState<BoardDocument | null>(null);
   const [content, setContent] = useState("");
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [viewMode, setViewMode] = useState<ViewMode>(
@@ -286,6 +332,11 @@ export default function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const selectedProjectRef = useRef(selectedProject);
   const selectedNoteRef = useRef(selectedNote);
+  const selectedBoardRef = useRef(selectedBoard);
+  const boardContentRef = useRef<BoardDocument | null>(boardContent);
+  const boardDirtyRef = useRef(false);
+  const boardSavingRef = useRef(false);
+  const boardPendingSaveRef = useRef(false);
   const contentRef = useRef(content);
   const dirtyRef = useRef(false);
   const savingRef = useRef(false);
@@ -304,8 +355,14 @@ export default function App() {
     selectedNoteRef.current = selectedNote;
   }, [selectedNote]);
   useEffect(() => {
+    selectedBoardRef.current = selectedBoard;
+  }, [selectedBoard]);
+  useEffect(() => {
     contentRef.current = content;
   }, [content]);
+  useEffect(() => {
+    boardContentRef.current = boardContent;
+  }, [boardContent]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("loquera-theme", theme);
@@ -325,8 +382,15 @@ export default function App() {
         await api.listNotes(project),
       ]),
     );
+    const boardEntries = await Promise.all(
+      nextProjects.map(async (project) => [
+        project,
+        await api.listBoards(project),
+      ]),
+    );
     setProjects(nextProjects);
     setNotesByProject(Object.fromEntries(entries));
+    setBoardsByProject(Object.fromEntries(boardEntries));
     if (!selectedProjectRef.current && nextProjects[0]) {
       setSelectedProject(nextProjects[0]);
       setExpanded((current) => new Set(current).add(nextProjects[0]));
@@ -342,6 +406,19 @@ export default function App() {
       undoRef.current = [];
       redoRef.current = [];
       dirtyRef.current = false;
+      setSaveState("saved");
+    } finally {
+      loadingRef.current = false;
+    }
+  }, []);
+
+  const loadBoard = useCallback(async (project: string, board: string) => {
+    loadingRef.current = true;
+    try {
+      const nextBoard = await api.readBoard(project, board);
+      boardContentRef.current = nextBoard;
+      setBoardContent(nextBoard);
+      boardDirtyRef.current = false;
       setSaveState("saved");
     } finally {
       loadingRef.current = false;
@@ -393,11 +470,51 @@ export default function App() {
     }
   }, [refreshTree]);
 
+  const saveCurrentBoard = useCallback(async () => {
+    const project = selectedProjectRef.current;
+    const board = selectedBoardRef.current;
+    const snapshot = boardContentRef.current;
+    if (!project || !board || !snapshot || !boardDirtyRef.current) return;
+    if (boardSavingRef.current) {
+      boardPendingSaveRef.current = true;
+      return;
+    }
+
+    boardSavingRef.current = true;
+    setSaveState("saving");
+    try {
+      await api.saveBoard(project, board, snapshot);
+      if (boardContentRef.current === snapshot) {
+        boardDirtyRef.current = false;
+        setSaveState("saved");
+      } else {
+        boardPendingSaveRef.current = true;
+        setSaveState("dirty");
+      }
+      await refreshTree();
+    } catch (error) {
+      setSaveState("error");
+      toast.error(`No se pudo guardar la pizarra: ${errorMessage(error)}`);
+    } finally {
+      boardSavingRef.current = false;
+      if (boardPendingSaveRef.current) {
+        boardPendingSaveRef.current = false;
+        window.setTimeout(() => void saveCurrentBoard(), 0);
+      }
+    }
+  }, [refreshTree]);
+
   useEffect(() => {
     if (!dirtyRef.current || loadingRef.current || !selectedNote) return;
     const timeout = window.setTimeout(() => void saveCurrent(), 850);
     return () => window.clearTimeout(timeout);
   }, [content, selectedNote, saveCurrent]);
+
+  useEffect(() => {
+    if (!boardDirtyRef.current || loadingRef.current || !selectedBoard) return;
+    const timeout = window.setTimeout(() => void saveCurrentBoard(), 850);
+    return () => window.clearTimeout(timeout);
+  }, [boardContent, selectedBoard, saveCurrentBoard]);
 
   useEffect(() => {
     Promise.all([api.getNotesRoot(), refreshTree()])
@@ -463,10 +580,21 @@ export default function App() {
           }
         }
         if (change.type === "capture:created") toast.success("Captura recibida");
+        if (
+          change.type === "board:item-added" &&
+          change.project === selectedProjectRef.current &&
+          change.note === selectedBoardRef.current
+        ) {
+          if (boardDirtyRef.current) {
+            toast.warning("La pizarra recibió un item externo; se conserva tu edición local.");
+          } else {
+            void loadBoard(selectedProjectRef.current, selectedBoardRef.current);
+          }
+        }
       },
       setLive,
     );
-  }, [loadNote, refreshTree]);
+  }, [loadBoard, loadNote, refreshTree]);
 
   async function selectNote(project: string, note: string) {
     if (
@@ -477,10 +605,34 @@ export default function App() {
     await saveCurrent();
     selectedProjectRef.current = project;
     selectedNoteRef.current = note;
+    selectedBoardRef.current = "";
     setSelectedProject(project);
     setSelectedNote(note);
+    setSelectedBoard("");
+    setBoardContent(null);
+    setViewMode("edit");
     setExpanded((value) => new Set(value).add(project));
     await loadNote(project, note);
+  }
+
+  async function selectBoard(project: string, board: string) {
+    if (
+      selectedProjectRef.current === project &&
+      selectedBoardRef.current === board
+    )
+      return;
+    await saveCurrent();
+    await saveCurrentBoard();
+    selectedProjectRef.current = project;
+    selectedNoteRef.current = "";
+    selectedBoardRef.current = board;
+    setSelectedProject(project);
+    setSelectedNote("");
+    setSelectedBoard(board);
+    setContent("");
+    setViewMode("read");
+    setExpanded((value) => new Set(value).add(project));
+    await loadBoard(project, board);
   }
 
   function toggleProject(project: string) {
@@ -512,6 +664,10 @@ export default function App() {
         );
         await selectNote(modal.project, note);
         toast.success("Nota creada");
+      } else if (modal.type === "board") {
+        const board = await api.createBoard(modal.project, modalValue);
+        await selectBoard(modal.project, board);
+        toast.success("Pizarra creada");
       } else if (modal.type === "rename") {
         const result = await api.renameNote(
           modal.project,
@@ -684,6 +840,24 @@ export default function App() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() =>
+                      openModal(
+                        { type: "board", project: selectedProject || projects[0] },
+                        "Nueva pizarra",
+                      )
+                    }
+                    disabled={!selectedProject && !projects.length}
+                  >
+                    <FileText size={15} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Nueva pizarra</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => openModal({ type: "project" }, "Nueva carpeta")}
                   >
                     <FolderPlus size={15} />
@@ -713,6 +887,12 @@ export default function App() {
                   "Nueva nota",
                 )
               }
+              onCreateBoard={() =>
+                openModal(
+                  { type: "board", project: selectedProject || projects[0] },
+                  "Nueva pizarra",
+                )
+              }
               onCreateProject={() =>
                 openModal({ type: "project" }, "Nueva carpeta")
               }
@@ -726,11 +906,14 @@ export default function App() {
                         key={project}
                         project={project}
                         notes={notesByProject[project] || []}
+                        boards={boardsByProject[project] || []}
                         expanded={expanded.has(project)}
                         selectedProject={selectedProject}
                         selectedNote={selectedNote}
+                        selectedBoard={selectedBoard}
                         onToggle={() => toggleProject(project)}
                         onSelectNote={(note) => void selectNote(project, note)}
+                        onSelectBoard={(board) => void selectBoard(project, board)}
                         onNewNote={() =>
                           openModal({ type: "note", project }, "Nueva nota")
                         }
@@ -783,7 +966,7 @@ export default function App() {
                   {selectedProject || "Biblioteca"}
                 </div>
                 <div className="truncate text-sm font-medium">
-                  {selectedNote || "Selecciona una nota"}
+                  {selectedBoard || selectedNote || "Selecciona una nota"}
                 </div>
               </div>
               <div className="flex items-center rounded-md bg-[var(--muted)] p-0.5">
@@ -802,6 +985,17 @@ export default function App() {
                   onClick={() => setViewMode("read")}
                 >
                   Lectura
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    selectedBoard && "bg-[var(--background)] shadow-sm",
+                  )}
+                  onClick={() => selectedBoard && setViewMode("read")}
+                  disabled={!selectedBoard}
+                >
+                  Pizarra
                 </Button>
               </div>
               <div
@@ -824,7 +1018,19 @@ export default function App() {
             </header>
 
             <div className="min-h-0 flex-1 overflow-hidden">
-              {viewMode === "edit" ? (
+              {selectedBoard ? (
+                <BoardCanvas
+                  key={`${selectedProject}:${selectedBoard}`}
+                  board={boardContent}
+                  disabled={!selectedBoard}
+                  onChange={(nextBoard) => {
+                    boardContentRef.current = nextBoard;
+                    setBoardContent(nextBoard);
+                    boardDirtyRef.current = true;
+                    setSaveState("dirty");
+                  }}
+                />
+              ) : viewMode === "edit" ? (
                 <div className="flex h-full min-h-0 flex-col">
                   <EditorToolbar
                     disabled={!selectedNote}
@@ -884,7 +1090,7 @@ export default function App() {
                     </article>
                   ) : (
                     <div className="grid h-full place-items-center text-sm text-[var(--muted-foreground)]">
-                      Selecciona o crea una nota.
+                      Selecciona o crea una nota o pizarra.
                     </div>
                   )}
                 </ScrollArea>
@@ -956,6 +1162,7 @@ export default function App() {
                 <DialogTitle className="text-base font-semibold">
                   {modal?.type === "project" && "Nueva carpeta"}
                   {modal?.type === "note" && "Nueva nota"}
+                  {modal?.type === "board" && "Nueva pizarra"}
                   {modal?.type === "rename" && "Renombrar nota"}
                   {modal?.type === "delete" && "Eliminar nota"}
                 </DialogTitle>

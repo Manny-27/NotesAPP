@@ -5,7 +5,7 @@
 - **Nombre:** `loquera-mvp`
 - **Propósito:** aplicación local-first de notas Markdown con captura desde el
   navegador.
-- **Estado:** quinta iteración implementada y validada en Windows.
+- **Estado:** sexta iteración implementada y validada en Windows.
 - **Última actualización:** 2026-06-15.
 
 ## Stack
@@ -15,10 +15,11 @@
 - Axum y Server-Sent Events.
 - `react-markdown` y `remark-gfm`.
 - `@dnd-kit/core`.
+- `tldraw`.
 - Tailwind CSS 4 y primitivas shadcn/ui basadas en Radix.
 - Lucide React y Sonner.
 - Extensión Manifest V3.
-- Archivos Markdown; sin base de datos.
+- Archivos Markdown y pizarras JSON; sin base de datos.
 
 ## Arquitectura
 
@@ -39,6 +40,7 @@ HTTP o Tauri publica eventos.
 
 ```text
 ~/Documents/Loquera/<proyecto>/<nota>.md
+~/Documents/Loquera/<proyecto>/<pizarra>.loqboard.json
 ```
 
 - Proyectos y notas se sanitizan antes de crear rutas.
@@ -49,6 +51,8 @@ HTTP o Tauri publica eventos.
 - Move nunca acepta una ruta; solo un nombre de proyecto sanitizado.
 - El endpoint move no crea el destino salvo que
   `createTargetProject: true`.
+- Las pizarras usan el mismo saneamiento de nombres y se guardan con extension
+  `.loqboard.json`.
 
 ## API frontend común
 
@@ -57,9 +61,14 @@ HTTP o Tauri publica eventos.
 - `listProjects`
 - `createProject`
 - `listNotes`
+- `listBoards`
 - `readNote`
+- `readBoard`
 - `createNote`
+- `createBoard`
 - `saveNote`
+- `saveBoard`
+- `appendBoardItem`
 - `deleteNote`
 - `renameNote`
 - `moveNote`
@@ -78,9 +87,14 @@ Base: `http://127.0.0.1:3210/api`
 | `GET` | `/projects` | Lista proyectos |
 | `POST` | `/projects` | Crea proyecto |
 | `GET` | `/projects/:project/notes` | Lista notas |
+| `GET` | `/projects/:project/boards` | Lista pizarras |
 | `GET` | `/projects/:project/notes/:note` | Lee nota |
 | `POST` | `/projects/:project/notes` | Crea nota |
+| `POST` | `/projects/:project/boards` | Crea pizarra |
 | `PUT` | `/projects/:project/notes/:note` | Guarda y puede auto-renombrar |
+| `GET` | `/projects/:project/boards/:board` | Lee pizarra |
+| `PUT` | `/projects/:project/boards/:board` | Guarda pizarra |
+| `POST` | `/projects/:project/boards/:board/items` | Agrega item a pizarra |
 | `DELETE` | `/projects/:project/notes/:note` | Elimina nota |
 | `PATCH` | `/projects/:project/notes/:note/rename` | Renombra nota |
 | `PATCH` | `/projects/:project/notes/:note/move` | Mueve nota |
@@ -149,6 +163,39 @@ Markdown contiene miniatura clickeable, título, URL, origen y timestamp.
 Para otros enlaces se escribe título, URL y dominio obtenidos de la URL. En
 ambos casos se conservan selección y comentario opcionales.
 
+## Pizarras
+
+Las pizarras viven junto a las notas con extensión `.loqboard.json`. El schema
+actual es local-first y versionado:
+
+```json
+{
+  "schemaVersion": 1,
+  "type": "loqboard",
+  "title": "Clase YouTube",
+  "createdAt": "2026-06-15T12:00:00Z",
+  "updatedAt": "2026-06-15T12:30:00Z",
+  "items": [],
+  "snapshot": null
+}
+```
+
+`snapshot` guarda el estado de `tldraw`; `items` guarda tarjetas propias de
+Loquera como videos de YouTube y texto. La UI permite crear y abrir pizarras
+desde el árbol, dibujar/escribir con tldraw, agregar tarjetas de texto y pegar
+videos de YouTube como tarjetas movibles con embed y nota asociada.
+
+Desde la séptima iteración, los items de pizarra soportan `pinned`,
+`pinnedX`, `pinnedY`, resize persistente por `width`/`height`, tarjetas
+`youtube`, `link`, `code` y `text`. Solo YouTube se embebe como iframe; los
+enlaces normales se renderizan como preview y se abren externamente.
+
+La extensión Manifest V3 incluye modo **Pizarra**: puede enviar la pestaña
+actual de YouTube o cualquier web normal a una pizarra existente o nueva usando
+el endpoint `/boards/:board/items`. La metadata viene solo del DOM activo:
+Open Graph, Twitter cards, canonical, favicon, dominio, descripción y texto
+seleccionado. No hay fetch externo ni scraping desde backend.
+
 ## Eventos SSE
 
 Eventos específicos:
@@ -159,6 +206,9 @@ Eventos específicos:
 - `note:deleted`
 - `note:renamed`
 - `note:moved`
+- `board:created`
+- `board:saved`
+- `board:item-added`
 - `capture:created`
 
 Después de cada evento específico también se publica `notes:changed` para
@@ -291,7 +341,7 @@ scroll vertical.
 
 ## Toolbar y menus contextuales
 
-La quinta iteracion incorpora una toolbar Markdown compacta encima del editor:
+La toolbar Markdown compacta vive encima del editor:
 
 - undo y redo con historial local de hasta 200 cambios;
 - limpiar formato y headings H1-H6;
@@ -309,6 +359,11 @@ seleccion despues de cada cambio. Todas las acciones pasan por el mismo estado
 Atajos: `Ctrl/Cmd+B`, `Ctrl/Cmd+I`, `Ctrl/Cmd+\``, `Ctrl/Cmd+Z` y
 `Ctrl/Cmd+Shift+Z`. No se agrega subrayado porque Markdown/GFM no define una
 sintaxis estandar.
+
+En la sexta iteración se corrigió el bug visual de tema: la toolbar dejó de
+usar tokens oscuros propios en modo claro y ahora se apoya en `--card`,
+`--card-foreground`, `--muted-foreground`, `--accent`,
+`--accent-foreground` y `--border`.
 
 Menus de click derecho:
 
@@ -348,11 +403,46 @@ shadcn/Radix `ContextMenu`.
 - [x] Menús contextuales para sidebar, notas y editor.
 - [x] Duplicar y mover notas desde click derecho.
 - [x] Modo enfoque.
+- [x] Toolbar alineada a tema claro/oscuro.
+- [x] Pizarras `.loqboard.json` con tldraw.
+- [x] Tarjetas YouTube con embed y nota en pizarra.
+- [x] Extensión capaz de enviar YouTube a pizarras.
+- [x] Resize de tarjetas de pizarra.
+- [x] Pin/unpin con candado para tarjetas fijas.
+- [x] Code cards con lenguaje, copiar y bloque monoespaciado.
+- [x] Link cards con preview de metadata local.
+- [x] Icono diferenciado para pizarras en sidebar.
+- [x] Extensión capaz de enviar enlaces normales a notas y pizarras.
 - [ ] Prueba manual completa en Chrome y Edge.
 - [ ] Watcher para cambios hechos por otros procesos.
 - [ ] Orden persistente de notas.
 
 ## Registro de cambios
+
+### 2026-06-15 - Iteración 7
+
+- Añadido resize con handle discreto para tarjetas de board.
+- Añadido pin/unpin con `Lock`/`Unlock` y persistencia en `.loqboard.json`.
+- Añadidas tarjetas `code` con título, selector de lenguaje, copiar y preview
+  en `pre/code`.
+- Añadidas tarjetas `link` con imagen OG, favicon, dominio, descripción,
+  selección y comentario.
+- Añadido menú contextual básico de board para crear texto, código y enlaces.
+- Cambiado icono de pizarras en sidebar a `PencilRuler`.
+- Extendida la extensión para capturar metadata local de cualquier web.
+- Enriquecido el bloque Markdown para capturas web normales.
+- Añadido evento SSE `board:item-added`.
+
+### 2026-06-15 - Iteración 6
+
+- Corregida toolbar para usar tokens de tema en modo claro y oscuro.
+- Añadido `tldraw` como motor de pizarra.
+- Añadido formato local `.loqboard.json`.
+- Añadidos endpoints HTTP y comandos Tauri para listar, crear, leer y guardar
+  pizarras.
+- Añadida vista de pizarra con autosave, tarjetas de texto y tarjetas YouTube.
+- Añadido modo Pizarra en la extensión para enviar videos de YouTube.
+- Añadidas pruebas Rust para storage y API HTTP de pizarras.
 
 ### 2026-06-15 - Iteración 5
 

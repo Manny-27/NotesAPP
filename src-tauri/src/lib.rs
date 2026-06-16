@@ -30,6 +30,13 @@ fn list_notes(storage: tauri::State<'_, Storage>, project: String) -> Result<Vec
 }
 
 #[tauri::command]
+fn list_boards(storage: tauri::State<'_, Storage>, project: String) -> Result<Vec<String>, String> {
+    storage
+        .list_boards(&project)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn read_note(
     storage: tauri::State<'_, Storage>,
     project: String,
@@ -53,6 +60,46 @@ fn create_note(
         .map_err(|error| error.to_string())?;
     events.notify("note:created", Some(project), Some(note.clone()));
     Ok(note)
+}
+
+#[tauri::command]
+fn create_board(
+    storage: tauri::State<'_, Storage>,
+    events: tauri::State<'_, EventBus>,
+    project: String,
+    title: String,
+) -> Result<String, String> {
+    let board = storage
+        .create_board(&project, &title)
+        .map_err(|error| error.to_string())?;
+    events.notify("board:created", Some(project), Some(board.clone()));
+    Ok(board)
+}
+
+#[tauri::command]
+fn read_board(
+    storage: tauri::State<'_, Storage>,
+    project: String,
+    board: String,
+) -> Result<storage::BoardDocument, String> {
+    storage
+        .read_board(&project, &board)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_board(
+    storage: tauri::State<'_, Storage>,
+    events: tauri::State<'_, EventBus>,
+    project: String,
+    board: String,
+    document: storage::BoardDocument,
+) -> Result<(), String> {
+    storage
+        .save_board(&project, &board, &document)
+        .map_err(|error| error.to_string())?;
+    events.notify("board:saved", Some(project), Some(board));
+    Ok(())
 }
 
 #[tauri::command]
@@ -101,8 +148,12 @@ pub fn run() {
             list_projects,
             create_project,
             list_notes,
+            list_boards,
             read_note,
             create_note,
+            create_board,
+            read_board,
+            save_board,
             save_note,
             get_notes_root
         ])

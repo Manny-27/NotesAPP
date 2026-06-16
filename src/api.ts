@@ -11,6 +11,9 @@ export type ChangeType =
   | "note:deleted"
   | "note:renamed"
   | "note:moved"
+  | "board:created"
+  | "board:saved"
+  | "board:item-added"
   | "capture:created"
   | "notes:changed";
 
@@ -41,9 +44,54 @@ export interface CapturePayload {
   note: string;
   title: string;
   url: string;
+  description?: string | null;
+  canonicalUrl?: string | null;
+  domain?: string | null;
+  siteName?: string | null;
+  imageUrl?: string | null;
+  faviconUrl?: string | null;
+  youtubeVideoId?: string | null;
   selectedText?: string | null;
   comment?: string | null;
   youtubeTimestamp?: number | null;
+}
+
+export interface BoardItem {
+  id: string;
+  kind: "youtube" | "text" | string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pinned?: boolean;
+  pinnedX?: number | null;
+  pinnedY?: number | null;
+  title?: string | null;
+  description?: string | null;
+  url?: string | null;
+  canonicalUrl?: string | null;
+  domain?: string | null;
+  siteName?: string | null;
+  imageUrl?: string | null;
+  faviconUrl?: string | null;
+  selectedText?: string | null;
+  videoId?: string | null;
+  timestamp?: number | null;
+  thumbnailUrl?: string | null;
+  language?: string | null;
+  code?: string | null;
+  note?: string | null;
+  text?: string | null;
+}
+
+export interface BoardDocument {
+  schemaVersion: number;
+  type: "loqboard";
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  items: BoardItem[];
+  snapshot?: unknown;
 }
 
 function isTauri() {
@@ -116,6 +164,15 @@ export const api = {
       () => invoke<string[]>("list_notes", { project }),
     ),
 
+  listBoards: (project: string) =>
+    withTauriFallback(
+      () =>
+        request<{ boards: string[] }>(
+          `/projects/${segment(project)}/boards`,
+        ).then(({ boards }) => boards),
+      () => invoke<string[]>("list_boards", { project }),
+    ),
+
   readNote: (project: string, note: string) =>
     withTauriFallback(
       () =>
@@ -133,6 +190,50 @@ export const api = {
           body: JSON.stringify({ title, content }),
         }).then(({ note }) => note),
       () => invoke<string>("create_note", { project, title, content }),
+    ),
+
+  createBoard: (project: string, title: string) =>
+    withTauriFallback(
+      () =>
+        request<{ board: string }>(`/projects/${segment(project)}/boards`, {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        }).then(({ board }) => board),
+      () => invoke<string>("create_board", { project, title }),
+    ),
+
+  readBoard: (project: string, board: string) =>
+    withTauriFallback(
+      () =>
+        request<{ board: BoardDocument }>(
+          `/projects/${segment(project)}/boards/${segment(board)}`,
+        ).then(({ board }) => board),
+      () => invoke<BoardDocument>("read_board", { project, board }),
+    ),
+
+  saveBoard: (project: string, board: string, document: BoardDocument) =>
+    withTauriFallback(
+      () =>
+        request<{ ok: boolean }>(
+          `/projects/${segment(project)}/boards/${segment(board)}`,
+          {
+            method: "PUT",
+            body: JSON.stringify({ board: document }),
+          },
+        ),
+      () =>
+        invoke<void>("save_board", { project, board, document }).then(() => ({
+          ok: true,
+        })),
+    ),
+
+  appendBoardItem: (project: string, board: string, item: BoardItem) =>
+    request<{ ok: boolean }>(
+      `/projects/${segment(project)}/boards/${segment(board)}/items`,
+      {
+        method: "POST",
+        body: JSON.stringify({ item }),
+      },
     ),
 
   saveNote: (project: string, note: string, content: string) =>
@@ -201,6 +302,9 @@ export const api = {
       "note:deleted",
       "note:renamed",
       "note:moved",
+      "board:created",
+      "board:saved",
+      "board:item-added",
       "capture:created",
     ];
 

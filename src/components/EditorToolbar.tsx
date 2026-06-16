@@ -52,7 +52,7 @@ export function EditorToolbar({
   );
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--toolbar)] px-2 text-[var(--toolbar-foreground)]">
+    <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--border)] bg-[var(--card)] px-2 text-[var(--card-foreground)]">
       <ToolbarButton label="Deshacer" disabled={disabled} onClick={() => onHistory("undo")}>
         <Undo2 size={iconSize} />
       </ToolbarButton>
@@ -60,7 +60,7 @@ export function EditorToolbar({
         <Redo2 size={iconSize} />
       </ToolbarButton>
       {action("Limpiar formato", "clear", <Eraser size={iconSize} />)}
-      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--toolbar-border)]" />
+      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--border)]" />
       {action("Encabezado 1", "h1", <Heading1 size={iconSize} />)}
       {action("Encabezado 2", "h2", <Heading2 size={iconSize} />)}
       {action("Encabezado 3", "h3", <Heading3 size={iconSize} />)}
@@ -69,7 +69,7 @@ export function EditorToolbar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-[11px] text-[var(--toolbar-muted)] hover:bg-[var(--toolbar-hover)] hover:text-[var(--toolbar-foreground)]"
+            className="h-7 px-2 text-[11px] text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--accent-foreground)]"
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
           >
@@ -87,12 +87,12 @@ export function EditorToolbar({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
-      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--toolbar-border)]" />
+      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--border)]" />
       {action("Negrita", "bold", <Bold size={iconSize} />)}
       {action("Cursiva", "italic", <Italic size={iconSize} />)}
       {action("Tachado", "strikethrough", <Strikethrough size={iconSize} />)}
       {action("Código inline", "inline-code", <Code2 size={iconSize} />)}
-      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--toolbar-border)]" />
+      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--border)]" />
       {action("Cita", "quote", <Quote size={iconSize} />)}
       {action("Checkbox", "checkbox", <CheckSquare size={iconSize} />)}
       {action("Enlace", "link", <Link size={iconSize} />)}
@@ -102,7 +102,7 @@ export function EditorToolbar({
       {action("Lista numerada", "ordered-list", <ListOrdered size={iconSize} />)}
       {action("Bloque de código", "code-block", <Code2 size={iconSize} />)}
       {action("Separador", "separator", <Minus size={iconSize} />)}
-      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--toolbar-border)]" />
+      <Separator orientation="vertical" className="mx-1 h-5 bg-[var(--border)]" />
       <ToolbarButton
         label={focusMode ? "Salir del modo enfoque" : "Modo enfoque"}
         onClick={onToggleFocus}

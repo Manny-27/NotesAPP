@@ -19,7 +19,7 @@ export function ToolbarButton({
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 rounded-md text-[var(--toolbar-muted)] hover:bg-[var(--toolbar-hover)] hover:text-[var(--toolbar-foreground)]"
+          className="size-7 rounded-md text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--accent-foreground)]"
           aria-label={label}
           disabled={disabled}
           onMouseDown={(event) => event.preventDefault()}
