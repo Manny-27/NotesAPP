@@ -5,8 +5,8 @@
 - **Nombre:** `loquera-mvp`
 - **Propósito:** aplicación local-first de notas Markdown con captura desde el
   navegador.
-- **Estado:** octava iteración implementada y validada en Windows.
-- **Última actualización:** 2026-06-15.
+- **Estado:** decima iteracion implementada y validada en Windows.
+- **Última actualización:** 2026-06-16.
 
 ## Stack
 
@@ -15,11 +15,12 @@
 - Axum y Server-Sent Events.
 - `react-markdown` y `remark-gfm`.
 - `@dnd-kit/core`.
-- `tldraw`.
 - Tailwind CSS 4 y primitivas shadcn/ui basadas en Radix.
 - Lucide React y Sonner.
 - Extensión Manifest V3.
 - Archivos Markdown y pizarras JSON; sin base de datos.
+- Pizarra propia con React, HTML absoluto y CSS transforms; sin `canvas`,
+  `tldraw` ni Excalidraw.
 
 ## Arquitectura
 
@@ -170,28 +171,78 @@ actual es local-first y versionado:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "type": "loqboard",
   "title": "Clase YouTube",
   "createdAt": "2026-06-15T12:00:00Z",
   "updatedAt": "2026-06-15T12:30:00Z",
+  "viewport": {
+    "x": 96,
+    "y": 64,
+    "zoom": 1
+  },
+  "settings": {
+    "showGrid": true
+  },
   "items": [],
   "snapshot": null
 }
 ```
 
-`snapshot` guarda el estado de `tldraw`; `items` guarda tarjetas propias de
-Loquera como videos de YouTube y texto. La UI permite crear y abrir pizarras
-desde el árbol, dibujar/escribir con tldraw, agregar tarjetas de texto y pegar
-videos de YouTube como tarjetas movibles con embed y nota asociada.
+`snapshot` queda como campo legado para compatibilidad con pizarras antiguas,
+pero el modo pizarra actual ya no depende de `tldraw`. `items` es la fuente de
+verdad: guarda tarjetas propias de Loquera como videos de YouTube, enlaces,
+texto/sticky y código. La UI permite crear y abrir pizarras desde el árbol,
+panear y hacer zoom sobre una superficie HTML, agregar tarjetas de texto/código
+y pegar videos de YouTube o enlaces como tarjetas movibles con contenido
+interactivo real.
+
+La arquitectura visual actual es:
+
+```text
+BoardView
+  BoardToolbar
+  BoardViewport
+    BoardSurface
+      BoardCard
+        YouTubeCard
+        LinkCard
+        CodeCard
+        TextCard
+    PinnedLayer
+      BoardCard pinned
+```
+
+No se usa `<canvas>` real para renderizar tarjetas. Las cards son elementos HTML
+posicionados absolutamente y movidos con `transform: translate3d(...)`; el zoom
+del tablero usa `scale(...)` sobre `BoardSurface`. Esta decisión mantiene
+iframes de YouTube, botones, inputs, textareas, bloques de código, links
+externos y previews como contenido interactivo normal del DOM.
+
+Desde la decima iteracion, `viewport` guarda pan y zoom de cada pizarra. El
+zoom minimo es `0.25`, el maximo es `3`, y se controla desde la toolbar flotante
+o con `Ctrl/Cmd + wheel`. El zoom se calcula alrededor del cursor con helpers
+puros en `src/lib/board/math.ts`: `clampZoom`, `screenToWorld`,
+`worldToScreen` y `zoomAtPoint`. El drag y resize convierten deltas de pantalla
+a deltas de mundo dividiendo entre `viewport.zoom`.
+
+`settings.showGrid` controla la cuadricula por pizarra. Si falta en archivos
+viejos, se asume `true`; el valor se guarda en `.loqboard.json` y se puede
+alternar desde la toolbar flotante o desde el menu contextual del board.
 
 Desde la séptima iteración, los items de pizarra soportan `pinned`,
 `pinnedX`, `pinnedY`, resize persistente por `width`/`height`, tarjetas
 `youtube`, `link`, `code` y `text`. Desde la octava iteración también soportan
-`locked`: bloquea movimiento, resize y edición sin sacar la tarjeta del canvas.
+`locked`: bloquea movimiento, resize y edición sin sacar la tarjeta de la capa
+normal del board.
 `pinned` es distinto: fija la tarjeta en la capa de pantalla. Solo YouTube se
 embebe como iframe; los enlaces normales se renderizan como preview y se abren
 externamente con validación `http`/`https`.
+
+Semantica actual de candado: `locked: true` nunca mueve una tarjeta a
+`PinnedLayer`. La tarjeta permanece en coordenadas de mundo `x/y`, se transforma
+con `BoardSurface` al panear o hacer zoom, y solo bloquea drag, resize y edicion
+accidental. Abrir enlaces, copiar y desbloquear siguen permitidos.
 
 La extensión Manifest V3 incluye modo **Pizarra**: puede enviar la pestaña
 actual de YouTube o cualquier web normal a una pizarra existente o nueva usando
@@ -394,7 +445,7 @@ shadcn/Radix `ContextMenu`.
 - [x] Extensión con tres modos.
 - [x] Extensión con proyectos y notas existentes.
 - [x] Toasters y estados vacíos.
-- [x] Doce pruebas Rust.
+- [x] Catorce pruebas Rust.
 - [x] Build frontend y validación de extensión.
 - [x] Árbol único colapsable tipo Obsidian.
 - [x] Autosave sin botón Guardar.
@@ -407,7 +458,7 @@ shadcn/Radix `ContextMenu`.
 - [x] Duplicar y mover notas desde click derecho.
 - [x] Modo enfoque.
 - [x] Toolbar alineada a tema claro/oscuro.
-- [x] Pizarras `.loqboard.json` con tldraw.
+- [x] Pizarras `.loqboard.json` con board propio HTML/CSS transforms.
 - [x] Tarjetas YouTube con embed y nota en pizarra.
 - [x] Extensión capaz de enviar YouTube a pizarras.
 - [x] Resize de tarjetas de pizarra.
@@ -417,17 +468,56 @@ shadcn/Radix `ContextMenu`.
 - [x] Link cards con preview de metadata local.
 - [x] Icono diferenciado para pizarras en sidebar.
 - [x] Extensión capaz de enviar enlaces normales a notas y pizarras.
+- [x] Zoom persistente por pizarra con `viewport.x/y/zoom`.
+- [x] Cuadricula opcional persistente por pizarra.
+- [x] Toolbar flotante de board con select, pan, creacion, grid y zoom.
+- [x] Schema `.loqboard.json` v3 con migracion desde v1/v2.
+- [x] Semantica de candado corregida: lock no fija al viewport.
 - [ ] Prueba manual completa en Chrome y Edge.
 - [ ] Watcher para cambios hechos por otros procesos.
 - [ ] Orden persistente de notas.
 
 ## Registro de cambios
 
+### 2026-06-16 - Iteración 10
+
+- Añadido `src/lib/board/math.ts` con helpers puros para zoom centrado en cursor
+  y conversion screen/world.
+- Migrado el schema de pizarra a `schemaVersion: 3` con `viewport` y
+  `settings.showGrid`.
+- Añadida migracion tolerante para pizarras v1/v2: defaults de viewport, grid,
+  `locked` y `pinned`, guardando v3 en el siguiente autosave.
+- Añadida `FloatingBoardToolbar` con select, pan, text, sticky, code, link,
+  YouTube, grid, zoom in/out y reset view.
+- Añadido zoom persistente por botones y `Ctrl/Cmd + wheel`; drag y resize
+  dividen el delta de pantalla entre `viewport.zoom`.
+- La cuadricula ahora es opcional y se escala junto con `BoardSurface`.
+- Rediseñadas las cards para sentirse mas integradas: controles en hover/focus,
+  headers flotantes, sombras suaves, YouTube preview, link cards compactas y
+  code cards monoespaciadas.
+- Corregida la semantica de `locked`: bloquea interaccion, pero la card sigue
+  dentro de `BoardSurface` y se mueve visualmente con pan/zoom.
+- Validado con `npm.cmd run build` y
+  `cargo test --manifest-path src-tauri\Cargo.toml`.
+
+### 2026-06-16 - Iteración 9
+
+- Reemplazado `tldraw` por una pizarra propia en React con elementos HTML
+  posicionados absolutamente.
+- Añadidos `BoardToolbar`, `BoardViewport`, `BoardSurface` y capa `PinnedLayer`
+  dentro de `src/components/BoardCanvas.tsx`.
+- Añadido pan y zoom por CSS transforms, con grid visual propio y tarjetas DOM
+  interactivas.
+- Conservado `.loqboard.json` como almacenamiento local; `items` queda como
+  fuente de verdad y `snapshot` como campo legado.
+- Eliminada la dependencia `tldraw` y su CSS global.
+- Validado con `npm.cmd run build`.
+
 ### 2026-06-15 - Iteración 8
 
 - Separado `locked` de `pinned` en tarjetas de pizarra.
 - `locked` bloquea movimiento, resize y edición, pero mantiene la tarjeta en
-  la capa normal del canvas.
+  la capa normal del board.
 - `pinned` mantiene una tarjeta fija en pantalla con coordenadas `pinnedX` y
   `pinnedY`.
 - Optimizado drag/resize para actualizar el DOM con `requestAnimationFrame` y
@@ -453,7 +543,7 @@ shadcn/Radix `ContextMenu`.
 ### 2026-06-15 - Iteración 6
 
 - Corregida toolbar para usar tokens de tema en modo claro y oscuro.
-- Añadido `tldraw` como motor de pizarra.
+- Añadido `tldraw` como motor inicial de pizarra, reemplazado en la iteración 9.
 - Añadido formato local `.loqboard.json`.
 - Añadidos endpoints HTTP y comandos Tauri para listar, crear, leer y guardar
   pizarras.

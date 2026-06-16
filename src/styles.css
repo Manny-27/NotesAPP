@@ -177,6 +177,22 @@ textarea::selection {
   padding: 7px 9px;
 }
 
-.tl-container {
-  --color-background: var(--editor);
+.board-surface {
+  transform: translate3d(var(--board-x), var(--board-y), 0)
+    scale(var(--board-zoom));
+  transform-origin: 0 0;
+}
+
+.board-surface-grid {
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-position: -1px -1px;
+  background-size: 32px 32px;
+}
+
+:root[data-theme="dark"] .board-surface-grid {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--border) 70%, transparent) 1px, transparent 1px);
 }

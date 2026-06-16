@@ -1,13 +1,42 @@
 import type { BoardDocument, BoardItem } from "../api";
+import { clampZoom } from "./board/math";
+
+const defaultViewport = { x: 96, y: 64, zoom: 1 };
+const defaultSettings = { showGrid: true };
+
+export function normalizeBoardDocument(board: BoardDocument): BoardDocument {
+  const viewport = board.viewport || defaultViewport;
+  const settings = board.settings || defaultSettings;
+
+  return {
+    ...board,
+    schemaVersion: 3,
+    viewport: {
+      x: numberOrDefault(viewport.x, defaultViewport.x),
+      y: numberOrDefault(viewport.y, defaultViewport.y),
+      zoom: clampZoom(numberOrDefault(viewport.zoom, defaultViewport.zoom)),
+    },
+    settings: {
+      showGrid: settings.showGrid ?? defaultSettings.showGrid,
+    },
+    items: (board.items || []).map((item) => ({
+      ...item,
+      locked: item.locked ?? false,
+      pinned: item.pinned ?? false,
+    })),
+  };
+}
 
 export function createEmptyBoard(title: string): BoardDocument {
   const now = new Date().toISOString();
   return {
-    schemaVersion: 1,
+    schemaVersion: 3,
     type: "loqboard",
     title,
     createdAt: now,
     updatedAt: now,
+    viewport: { ...defaultViewport },
+    settings: { ...defaultSettings },
     items: [],
     snapshot: undefined,
   };
@@ -88,7 +117,7 @@ export function createLinkItem(url: string, title = "Enlace"): BoardItem {
   };
 }
 
-export function createTextItem(): BoardItem {
+export function createTextItem(text = "Nueva tarjeta"): BoardItem {
   return {
     id: `item_${crypto.randomUUID()}`,
     kind: "text",
@@ -98,7 +127,7 @@ export function createTextItem(): BoardItem {
     height: 160,
     locked: false,
     pinned: false,
-    text: "Nueva tarjeta",
+    text,
   };
 }
 
@@ -133,4 +162,8 @@ export function safeHttpUrl(value?: string | null) {
   } catch {
     return null;
   }
+}
+
+function numberOrDefault(value: number | undefined, fallback: number) {
+  return Number.isFinite(value) ? Number(value) : fallback;
 }

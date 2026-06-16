@@ -85,12 +85,24 @@ export interface BoardItem {
   text?: string | null;
 }
 
+export interface BoardViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface BoardSettings {
+  showGrid: boolean;
+}
+
 export interface BoardDocument {
   schemaVersion: number;
   type: "loqboard";
   title: string;
   createdAt: string;
   updatedAt: string;
+  viewport: BoardViewport;
+  settings: BoardSettings;
   items: BoardItem[];
   snapshot?: unknown;
 }

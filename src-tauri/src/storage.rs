@@ -81,12 +81,46 @@ pub struct BoardItem {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct BoardViewport {
+    pub x: f64,
+    pub y: f64,
+    pub zoom: f64,
+}
+
+impl Default for BoardViewport {
+    fn default() -> Self {
+        Self {
+            x: 96.0,
+            y: 64.0,
+            zoom: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoardSettings {
+    pub show_grid: bool,
+}
+
+impl Default for BoardSettings {
+    fn default() -> Self {
+        Self { show_grid: true }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BoardDocument {
     pub schema_version: u32,
     pub r#type: String,
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub viewport: BoardViewport,
+    #[serde(default)]
+    pub settings: BoardSettings,
     #[serde(default)]
     pub items: Vec<BoardItem>,
     #[serde(default)]
@@ -219,11 +253,13 @@ impl Storage {
 
         let now = chrono::Utc::now().to_rfc3339();
         let document = BoardDocument {
-            schema_version: 1,
+            schema_version: 3,
             r#type: "loqboard".to_string(),
             title: board.clone(),
             created_at: now.clone(),
             updated_at: now,
+            viewport: BoardViewport::default(),
+            settings: BoardSettings::default(),
             items: Vec::new(),
             snapshot: None,
         };
@@ -246,9 +282,10 @@ impl Storage {
     ) -> io::Result<()> {
         let path = self.board_path(project, board)?;
         let mut next = document.clone();
-        next.schema_version = 1;
+        next.schema_version = 3;
         next.r#type = "loqboard".to_string();
         next.title = sanitize_name(&next.title)?;
+        next.viewport.zoom = next.viewport.zoom.clamp(0.25, 3.0);
         next.updated_at = chrono::Utc::now().to_rfc3339();
         self.write_board_document(&path, &next)
     }

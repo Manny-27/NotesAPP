@@ -194,7 +194,7 @@ muestra un error de conexión.
 - CORS permite cualquier origen durante el MVP.
 - El servidor solo escucha en `127.0.0.1`, sin autenticación.
 - El puerto `3210` es fijo.
-- No hay autosave.
+- No hay papelera para borrados.
 - No hay watcher para cambios hechos directamente por otro editor.
 - El orden de notas no se persiste.
 - La extensión no funciona en páginas internas del navegador como
@@ -205,8 +205,8 @@ muestra un error de conexión.
 
 1. Restringir CORS y añadir un token local compartido con la extensión.
 2. Añadir renombrado, borrado seguro y confirmaciones.
-3. Incorporar autosave y protección de cambios pendientes.
-4. Añadir preview Markdown y búsqueda local.
+3. Añadir selección múltiple y alineación de tarjetas en board.
+4. Añadir búsqueda global y backlinks locales.
 5. Hacer configurable la carpeta raíz y el puerto.
 6. Añadir iconos y habilitar bundles de distribución.
 
@@ -221,15 +221,38 @@ Las pizarras se guardan junto a las notas como:
 ~/Documents/Loquera/<proyecto>/<pizarra>.loqboard.json
 ```
 
-En una pizarra puedes dibujar con tldraw, agregar tarjetas de texto, pegar URLs
-de YouTube o enlaces normales, y crear tarjetas de codigo. Las tarjetas se
-mueven desde su encabezado y se redimensionan con el handle de la esquina
-inferior derecha. Mantener `Shift` durante el resize conserva la proporcion.
+La pizarra usa un board propio con HTML absoluto y CSS transforms, sin tldraw ni
+canvas real. Puedes agregar tarjetas de texto/sticky, codigo, links normales y
+YouTube desde la barra flotante inferior o desde el menu contextual del board.
 
-Cada tarjeta puede bloquearse o fijarse. Bloquear (`locked`) impide mover,
-redimensionar y editar la tarjeta, pero la deja en el canvas normal. Fijar
-(`pinned`) la coloca en una capa de pantalla, util para dejar un video o
-referencia visible mientras organizas el resto.
+La barra flotante incluye seleccionar, mano/pan, texto, sticky, codigo, link,
+YouTube, mostrar/ocultar cuadricula, zoom out, porcentaje actual, zoom in y
+reset de vista. En modo pan, arrastra el fondo para mover la pizarra. En modo
+texto/sticky/codigo/link/YouTube, haz click en la pizarra para crear el item en
+esa posicion. Link y YouTube abren un dialog simple para pegar la URL.
+
+Zoom:
+
+- usa los botones `-` y `+` de la barra flotante;
+- usa `Ctrl/Cmd + rueda` o pinch de trackpad cuando el navegador lo reporta
+  como wheel con `ctrlKey`;
+- el zoom ocurre alrededor del cursor;
+- el viewport (`x`, `y`, `zoom`) se guarda en `.loqboard.json` y se restaura al
+  abrir la pizarra.
+
+La cuadricula puede ocultarse o mostrarse desde la barra flotante o el menu
+contextual del board. La preferencia se guarda por pizarra en
+`settings.showGrid`.
+
+Las tarjetas se mueven desde su control flotante y se redimensionan con el
+handle de la esquina inferior derecha. Mantener `Shift` durante el resize
+conserva la proporcion.
+
+El candado (`locked`) solo bloquea interaccion accidental: impide mover,
+redimensionar y editar la tarjeta, pero la tarjeta sigue pegada a su posicion
+dentro del board. Si paneas o haces zoom, una tarjeta bloqueada se mueve
+visualmente junto con la pizarra. Fijar (`pinned`) es distinto: coloca la tarjeta
+en una capa de pantalla.
 
 El drag y resize de tarjetas se aplican visualmente durante el movimiento y se
 guardan una sola vez al soltar, para no disparar autosave en cada pixel.
