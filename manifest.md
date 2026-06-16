@@ -5,7 +5,7 @@
 - **Nombre:** `loquera-mvp`
 - **Propósito:** aplicación local-first de notas Markdown con captura desde el
   navegador.
-- **Estado:** sexta iteración implementada y validada en Windows.
+- **Estado:** octava iteración implementada y validada en Windows.
 - **Última actualización:** 2026-06-15.
 
 ## Stack
@@ -187,8 +187,11 @@ videos de YouTube como tarjetas movibles con embed y nota asociada.
 
 Desde la séptima iteración, los items de pizarra soportan `pinned`,
 `pinnedX`, `pinnedY`, resize persistente por `width`/`height`, tarjetas
-`youtube`, `link`, `code` y `text`. Solo YouTube se embebe como iframe; los
-enlaces normales se renderizan como preview y se abren externamente.
+`youtube`, `link`, `code` y `text`. Desde la octava iteración también soportan
+`locked`: bloquea movimiento, resize y edición sin sacar la tarjeta del canvas.
+`pinned` es distinto: fija la tarjeta en la capa de pantalla. Solo YouTube se
+embebe como iframe; los enlaces normales se renderizan como preview y se abren
+externamente con validación `http`/`https`.
 
 La extensión Manifest V3 incluye modo **Pizarra**: puede enviar la pestaña
 actual de YouTube o cualquier web normal a una pizarra existente o nueva usando
@@ -408,7 +411,8 @@ shadcn/Radix `ContextMenu`.
 - [x] Tarjetas YouTube con embed y nota en pizarra.
 - [x] Extensión capaz de enviar YouTube a pizarras.
 - [x] Resize de tarjetas de pizarra.
-- [x] Pin/unpin con candado para tarjetas fijas.
+- [x] Lock/unlock para bloquear movimiento, resize y edición de tarjetas.
+- [x] Pin/unpin independiente para tarjetas fijas en pantalla.
 - [x] Code cards con lenguaje, copiar y bloque monoespaciado.
 - [x] Link cards con preview de metadata local.
 - [x] Icono diferenciado para pizarras en sidebar.
@@ -418,6 +422,19 @@ shadcn/Radix `ContextMenu`.
 - [ ] Orden persistente de notas.
 
 ## Registro de cambios
+
+### 2026-06-15 - Iteración 8
+
+- Separado `locked` de `pinned` en tarjetas de pizarra.
+- `locked` bloquea movimiento, resize y edición, pero mantiene la tarjeta en
+  la capa normal del canvas.
+- `pinned` mantiene una tarjeta fija en pantalla con coordenadas `pinnedX` y
+  `pinnedY`.
+- Optimizado drag/resize para actualizar el DOM con `requestAnimationFrame` y
+  persistir una sola vez al soltar el puntero.
+- Agregado `openExternalUrl` con validación `http`/`https`, intento de opener
+  Tauri y fallback a `window.open`.
+- La extensión envía capturas de pizarra con `locked: false` y `pinned: false`.
 
 ### 2026-06-15 - Iteración 7
 

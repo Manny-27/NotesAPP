@@ -226,9 +226,13 @@ de YouTube o enlaces normales, y crear tarjetas de codigo. Las tarjetas se
 mueven desde su encabezado y se redimensionan con el handle de la esquina
 inferior derecha. Mantener `Shift` durante el resize conserva la proporcion.
 
-Cada tarjeta tiene un candado para fijar/desfijar. Una tarjeta fijada queda en
-la capa de pantalla del board, util para dejar un video o referencia visible
-mientras organizas el resto.
+Cada tarjeta puede bloquearse o fijarse. Bloquear (`locked`) impide mover,
+redimensionar y editar la tarjeta, pero la deja en el canvas normal. Fijar
+(`pinned`) la coloca en una capa de pantalla, util para dejar un video o
+referencia visible mientras organizas el resto.
+
+El drag y resize de tarjetas se aplican visualmente durante el movimiento y se
+guardan una sola vez al soltar, para no disparar autosave en cada pixel.
 
 Las tarjetas de codigo permiten editar titulo, elegir lenguaje, escribir codigo
 monoespaciado y copiarlo. El resaltado avanzado queda pendiente; por ahora se

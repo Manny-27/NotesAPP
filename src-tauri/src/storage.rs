@@ -56,6 +56,8 @@ pub struct BoardItem {
     pub width: f64,
     pub height: f64,
     #[serde(default)]
+    pub locked: bool,
+    #[serde(default)]
     pub pinned: bool,
     pub pinned_x: Option<f64>,
     pub pinned_y: Option<f64>,
@@ -803,6 +805,7 @@ mod tests {
                     y: 80.0,
                     width: 420.0,
                     height: 340.0,
+                    locked: false,
                     pinned: false,
                     pinned_x: None,
                     pinned_y: None,

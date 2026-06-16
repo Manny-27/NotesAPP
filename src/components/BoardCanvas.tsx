@@ -3,15 +3,16 @@ import {
   Copy,
   ExternalLink,
   Grip,
-  Link as LinkIcon,
   Lock,
+  Pin,
+  PinOff,
   Plus,
   Trash2,
   Unlock,
   Video,
 } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Tldraw, createTLStore } from "tldraw";
 import type { BoardDocument, BoardItem } from "../api";
 import {
@@ -23,6 +24,7 @@ import {
   youtubeEmbedUrl,
   youtubeVideoId,
 } from "../lib/board-utils";
+import { openExternalUrl } from "../lib/open-external";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 
@@ -43,20 +45,28 @@ type Gesture =
   | {
       type: "drag";
       id: string;
+      element: HTMLElement;
       startX: number;
       startY: number;
       itemX: number;
       itemY: number;
       pinned: boolean;
+      nextX: number;
+      nextY: number;
+      frame: number | null;
     }
   | {
       type: "resize";
       id: string;
+      element: HTMLElement;
       startX: number;
       startY: number;
       width: number;
       height: number;
+      nextWidth: number;
+      nextHeight: number;
       ratio: number;
+      frame: number | null;
     };
 
 export function BoardCanvas({
@@ -140,6 +150,7 @@ export function BoardCanvas({
       {
         ...item,
         id: `item_${crypto.randomUUID()}`,
+        locked: false,
         x: item.x + 28,
         y: item.y + 28,
         pinnedX: (item.pinnedX ?? item.x) + 28,
@@ -148,43 +159,87 @@ export function BoardCanvas({
     ]);
   }
 
+  function scheduleGestureFrame(gesture: Gesture) {
+    if (gesture.frame !== null) return;
+    gesture.frame = requestAnimationFrame(() => {
+      gesture.frame = null;
+      if (gesture.type === "drag") {
+        gesture.element.style.transform = `translate3d(${gesture.nextX}px, ${gesture.nextY}px, 0)`;
+      } else {
+        gesture.element.style.width = `${gesture.nextWidth}px`;
+        gesture.element.style.height = `${gesture.nextHeight}px`;
+      }
+    });
+  }
+
   function movePointer(event: globalThis.PointerEvent) {
     const gesture = gestureRef.current;
     if (!gesture) return;
     if (gesture.type === "drag") {
-      const dx = event.clientX - gesture.startX;
-      const dy = event.clientY - gesture.startY;
-      patchItem(
-        gesture.id,
-        gesture.pinned
-          ? { pinnedX: gesture.itemX + dx, pinnedY: gesture.itemY + dy }
-          : { x: gesture.itemX + dx, y: gesture.itemY + dy },
-      );
+      gesture.nextX = gesture.itemX + event.clientX - gesture.startX;
+      gesture.nextY = gesture.itemY + event.clientY - gesture.startY;
+      scheduleGestureFrame(gesture);
       return;
     }
-    const dx = event.clientX - gesture.startX;
-    const width = Math.max(220, gesture.width + dx);
+
+    const width = Math.max(220, gesture.width + event.clientX - gesture.startX);
     const height = event.shiftKey
       ? Math.max(160, width / gesture.ratio)
       : Math.max(140, gesture.height + event.clientY - gesture.startY);
-    patchItem(gesture.id, { width, height });
+    gesture.nextWidth = width;
+    gesture.nextHeight = height;
+    scheduleGestureFrame(gesture);
   }
 
   function stopPointer() {
+    const gesture = gestureRef.current;
     gestureRef.current = null;
     window.removeEventListener("pointermove", movePointer);
     window.removeEventListener("pointerup", stopPointer);
+    if (!gesture) return;
+    if (gesture.frame !== null) cancelAnimationFrame(gesture.frame);
+    delete gesture.element.dataset.dragging;
+
+    if (gesture.type === "drag") {
+      patchItem(
+        gesture.id,
+        gesture.pinned
+          ? { pinnedX: gesture.nextX, pinnedY: gesture.nextY }
+          : { x: gesture.nextX, y: gesture.nextY },
+      );
+    } else {
+      patchItem(gesture.id, {
+        width: gesture.nextWidth,
+        height: gesture.nextHeight,
+      });
+    }
+  }
+
+  function findCardElement(event: ReactPointerEvent) {
+    return (event.currentTarget as HTMLElement).closest(
+      "[data-board-card]",
+    ) as HTMLElement | null;
   }
 
   function startDrag(item: BoardItem, event: ReactPointerEvent) {
+    if (disabled || item.locked) return;
+    const element = findCardElement(event);
+    if (!element) return;
+    const itemX = item.pinned ? item.pinnedX ?? item.x : item.x;
+    const itemY = item.pinned ? item.pinnedY ?? item.y : item.y;
+    element.dataset.dragging = "true";
     gestureRef.current = {
       type: "drag",
       id: item.id,
+      element,
       startX: event.clientX,
       startY: event.clientY,
-      itemX: item.pinned ? item.pinnedX ?? item.x : item.x,
-      itemY: item.pinned ? item.pinnedY ?? item.y : item.y,
+      itemX,
+      itemY,
+      nextX: itemX,
+      nextY: itemY,
       pinned: Boolean(item.pinned),
+      frame: null,
     };
     window.addEventListener("pointermove", movePointer);
     window.addEventListener("pointerup", stopPointer);
@@ -192,14 +247,21 @@ export function BoardCanvas({
 
   function startResize(item: BoardItem, event: ReactPointerEvent) {
     event.stopPropagation();
+    if (disabled || item.locked) return;
+    const element = findCardElement(event);
+    if (!element) return;
     gestureRef.current = {
       type: "resize",
       id: item.id,
+      element,
       startX: event.clientX,
       startY: event.clientY,
       width: item.width,
       height: item.height,
+      nextWidth: item.width,
+      nextHeight: item.height,
       ratio: item.width / Math.max(item.height, 1),
+      frame: null,
     };
     window.addEventListener("pointermove", movePointer);
     window.addEventListener("pointerup", stopPointer);
@@ -258,20 +320,10 @@ export function BoardCanvas({
         ))}
       </div>
       <div className="absolute right-3 top-3 z-40 flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--card)]/95 p-2 shadow-xl backdrop-blur">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          onClick={() => addItem(createTextItem())}
-        >
+        <Button variant="outline" size="sm" disabled={disabled} onClick={() => addItem(createTextItem())}>
           <Plus size={14} /> Texto
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          onClick={() => addItem(createCodeItem())}
-        >
+        <Button variant="outline" size="sm" disabled={disabled} onClick={() => addItem(createCodeItem())}>
           <Code2 size={14} /> Código
         </Button>
         <input
@@ -330,7 +382,7 @@ function MenuButton({
   );
 }
 
-function BoardCard({
+const BoardCard = memo(function BoardCard({
   item,
   disabled,
   pinned,
@@ -349,18 +401,28 @@ function BoardCard({
   onDelete: () => void;
   onDuplicate: () => void;
 }) {
-  const embedUrl = youtubeEmbedUrl(item);
   const url = safeHttpUrl(item.canonicalUrl || item.url);
   const left = pinned ? item.pinnedX ?? item.x : item.x;
   const top = pinned ? item.pinnedY ?? item.y : item.y;
+  const isReadOnly = disabled || Boolean(item.locked);
+
   return (
     <div
-      className="group pointer-events-auto absolute z-10 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-xl"
+      data-board-card
+      className={cn(
+        "group pointer-events-auto absolute left-0 top-0 z-10 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-xl",
+        "will-change-transform",
+        item.locked && "ring-1 ring-[var(--ring)]",
+      )}
       style={{
-        left,
-        top,
+        contain: "layout paint",
+        transform: `translate3d(${left}px, ${top}px, 0)`,
         width: item.width,
         height: item.height,
+      }}
+      onDoubleClick={(event) => {
+        if ((event.target as HTMLElement).closest("input, textarea, select, button")) return;
+        if (url) void openExternalUrl(url);
       }}
       onContextMenu={(event) => {
         event.preventDefault();
@@ -370,14 +432,14 @@ function BoardCard({
       <div
         className={cn(
           "flex h-8 items-center gap-2 border-b border-[var(--border)] bg-[var(--muted)] px-2 text-xs font-medium",
-          !disabled && "cursor-grab",
+          item.locked ? "cursor-default" : !disabled && "cursor-grab",
         )}
-        onPointerDown={(event) => !disabled && onStartDrag(item, event)}
+        onPointerDown={(event) => onStartDrag(item, event)}
       >
         <Grip size={13} className="text-[var(--muted-foreground)]" />
         <span className="min-w-0 flex-1 truncate">{cardTitle(item)}</span>
         {url && (
-          <IconButton label="Abrir enlace" onClick={() => window.open(url, "_blank", "noreferrer")}>
+          <IconButton label="Abrir enlace" onClick={() => void openExternalUrl(url)}>
             <ExternalLink size={13} />
           </IconButton>
         )}
@@ -390,7 +452,13 @@ function BoardCard({
           </IconButton>
         )}
         <IconButton
-          label={item.pinned ? "Desfijar" : "Fijar en pantalla"}
+          label={item.locked ? "Desbloquear" : "Bloquear"}
+          onClick={() => onPatch({ locked: !item.locked })}
+        >
+          {item.locked ? <Lock size={13} /> : <Unlock size={13} />}
+        </IconButton>
+        <IconButton
+          label={item.pinned ? "Desfijar de pantalla" : "Fijar en pantalla"}
           onClick={() =>
             onPatch({
               pinned: !item.pinned,
@@ -399,7 +467,7 @@ function BoardCard({
             })
           }
         >
-          {item.pinned ? <Lock size={13} /> : <Unlock size={13} />}
+          {item.pinned ? <PinOff size={13} /> : <Pin size={13} />}
         </IconButton>
         <IconButton label="Duplicar" onClick={onDuplicate}>
           <Plus size={13} />
@@ -408,8 +476,8 @@ function BoardCard({
           <Trash2 size={13} />
         </IconButton>
       </div>
-      <CardBody item={item} onPatch={onPatch} disabled={disabled} />
-      {!disabled && (
+      <CardBody item={item} onPatch={onPatch} disabled={isReadOnly} />
+      {!isReadOnly && (
         <button
           className="absolute bottom-1 right-1 size-4 cursor-nwse-resize rounded border border-[var(--border)] bg-[var(--background)] opacity-0 shadow-sm transition-opacity group-hover:opacity-100"
           aria-label="Redimensionar"
@@ -419,7 +487,7 @@ function BoardCard({
       )}
     </div>
   );
-}
+});
 
 function CardBody({
   item,
@@ -431,12 +499,13 @@ function CardBody({
   onPatch: (patch: Partial<BoardItem>) => void;
 }) {
   if (item.kind === "youtube") {
+    const embedUrl = youtubeEmbedUrl(item);
     return (
       <div className="flex h-[calc(100%-2rem)] flex-col">
-        {youtubeEmbedUrl(item) ? (
+        {embedUrl ? (
           <iframe
-            className="aspect-video w-full shrink-0 bg-black"
-            src={youtubeEmbedUrl(item) || undefined}
+            className="aspect-video w-full shrink-0 bg-black group-data-[dragging=true]:pointer-events-none"
+            src={embedUrl}
             title={item.title || "YouTube"}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
@@ -552,14 +621,19 @@ function IconButton({
 }) {
   return (
     <button
-      className="grid size-6 place-items-center rounded text-[var(--muted-foreground)] opacity-70 hover:bg-[var(--hover)] hover:text-[var(--foreground)] hover:opacity-100"
+      data-no-drag
+      className="grid size-6 place-items-center rounded text-[var(--muted-foreground)] opacity-80 hover:bg-[var(--hover)] hover:text-[var(--foreground)] hover:opacity-100"
       title={label}
       aria-label={label}
       onClick={(event) => {
+        event.preventDefault();
         event.stopPropagation();
         onClick();
       }}
-      onPointerDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
     >
       {children}
     </button>

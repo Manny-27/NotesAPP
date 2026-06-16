@@ -237,6 +237,7 @@ function boardCaptureItem(comment = "") {
     y: 80,
     width: 420,
     height: videoId ? 340 : 280,
+    locked: false,
     pinned: false,
     title: state.page.title || state.tab?.title || "Enlace",
     description: state.page.description ?? null,

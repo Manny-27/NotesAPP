@@ -63,6 +63,7 @@ export interface BoardItem {
   y: number;
   width: number;
   height: number;
+  locked?: boolean;
   pinned?: boolean;
   pinnedX?: number | null;
   pinnedY?: number | null;
