@@ -5,7 +5,7 @@
 - **Nombre:** `loquera-mvp`
 - **Propósito:** aplicación local-first de notas Markdown con captura desde el
   navegador.
-- **Estado:** cuarta iteración implementada y validada en Windows.
+- **Estado:** quinta iteración implementada y validada en Windows.
 - **Última actualización:** 2026-06-15.
 
 ## Stack
@@ -289,6 +289,41 @@ scroll vertical.
 - **Destino de move existente por defecto:** evita crear carpetas por un drop
   accidental.
 
+## Toolbar y menus contextuales
+
+La quinta iteracion incorpora una toolbar Markdown compacta encima del editor:
+
+- undo y redo con historial local de hasta 200 cambios;
+- limpiar formato y headings H1-H6;
+- negrita, cursiva, tachado y codigo inline;
+- cita, checkbox, enlace, imagen, tabla, listas y bloque de codigo;
+- separador horizontal;
+- modo enfoque, que oculta sidebar, cabecera y pie sin desmontar el editor;
+- tooltips para cada accion y dropdown para headings secundarios.
+
+Las transformaciones viven en `src/lib/markdown-actions.ts` y operan sobre la
+seleccion actual del `textarea`. `src/lib/editor-selection.ts` restaura foco y
+seleccion despues de cada cambio. Todas las acciones pasan por el mismo estado
+`content`, por lo que conservan el autosave existente.
+
+Atajos: `Ctrl/Cmd+B`, `Ctrl/Cmd+I`, `Ctrl/Cmd+\``, `Ctrl/Cmd+Z` y
+`Ctrl/Cmd+Shift+Z`. No se agrega subrayado porque Markdown/GFM no define una
+sintaxis estandar.
+
+Menus de click derecho:
+
+- sidebar: nueva nota, nueva carpeta y colapsar todo;
+- nota: renombrar, duplicar, mover a otro proyecto y eliminar;
+- editor: formatos inline y de bloque frecuentes.
+
+Duplicar usa las APIs existentes: lee el Markdown, calcula un nombre libre,
+actualiza el primer H1 cuando existe y crea una nota nueva sin sobrescribir.
+Mover desde el menu contextual reutiliza el flujo seguro de drag and drop.
+
+Componentes agregados: `EditorToolbar`, `ToolbarButton`,
+`SidebarContextMenu`, `NoteContextMenu`, `EditorContextMenu` y el primitive
+shadcn/Radix `ContextMenu`.
+
 ## Estado actual
 
 - [x] Delete de notas.
@@ -309,11 +344,26 @@ scroll vertical.
 - [x] Ajustes fijo en la barra lateral.
 - [x] Base shadcn/ui, Tailwind y Lucide.
 - [x] Extensión alineada visualmente.
+- [x] Toolbar Markdown compacta sobre el editor.
+- [x] Menús contextuales para sidebar, notas y editor.
+- [x] Duplicar y mover notas desde click derecho.
+- [x] Modo enfoque.
 - [ ] Prueba manual completa en Chrome y Edge.
 - [ ] Watcher para cambios hechos por otros procesos.
 - [ ] Orden persistente de notas.
 
 ## Registro de cambios
+
+### 2026-06-15 - Iteración 5
+
+- Agregada toolbar Markdown horizontal, oscura y compacta.
+- Agregadas acciones sobre selección y líneas completas.
+- Agregado historial explícito para undo/redo de escritura y formatos.
+- Agregados atajos de teclado para formato e historial.
+- Agregados menús contextuales de sidebar, nota y editor.
+- Agregadas acciones de duplicar y mover desde el árbol.
+- Agregado modo enfoque sin afectar autosave.
+- Agregado `@radix-ui/react-context-menu`.
 
 ### 2026-06-15 - Iteración 4
 

@@ -28,6 +28,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Toaster, toast } from "sonner";
 import { api, type NotesChangedEvent } from "./api";
+import { EditorContextMenu } from "./components/EditorContextMenu";
+import { EditorToolbar } from "./components/EditorToolbar";
+import { NoteContextMenu } from "./components/NoteContextMenu";
+import { SidebarContextMenu } from "./components/SidebarContextMenu";
 import { Button } from "./components/ui/button";
 import {
   Dialog,
@@ -50,6 +54,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./components/ui/tooltip";
+import { runEditorAction } from "./lib/editor-selection";
+import type { MarkdownAction } from "./lib/markdown-actions";
 import { cn } from "./lib/utils";
 
 type Theme = "light" | "dark";
@@ -70,6 +76,9 @@ interface NoteTreeItemProps {
   onSelect: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
+  onMove: (project: string) => void;
+  projects: string[];
 }
 
 function NoteTreeItem({
@@ -79,6 +88,9 @@ function NoteTreeItem({
   onSelect,
   onRename,
   onDelete,
+  onDuplicate,
+  onMove,
+  projects,
 }: NoteTreeItemProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({
@@ -87,20 +99,28 @@ function NoteTreeItem({
     });
 
   return (
-    <div
-      ref={setNodeRef}
-      style={
-        transform
-          ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-          : undefined
-      }
-      className={cn(
-        "group flex h-7 items-center gap-1 rounded-md pl-5 pr-1 text-[12px] text-[var(--muted-foreground)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]",
-        selected && "bg-[var(--selected)] text-[var(--foreground)]",
-        isDragging && "z-50 opacity-60 shadow-lg",
-      )}
-      onClick={onSelect}
+    <NoteContextMenu
+      project={project}
+      projects={projects}
+      onRename={onRename}
+      onDelete={onDelete}
+      onDuplicate={onDuplicate}
+      onMove={onMove}
     >
+      <div
+        ref={setNodeRef}
+        style={
+          transform
+            ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
+            : undefined
+        }
+        className={cn(
+          "group flex h-7 items-center gap-1 rounded-md pl-5 pr-1 text-[12px] text-[var(--muted-foreground)] hover:bg-[var(--hover)] hover:text-[var(--foreground)]",
+          selected && "bg-[var(--selected)] text-[var(--foreground)]",
+          isDragging && "z-50 opacity-60 shadow-lg",
+        )}
+        onClick={onSelect}
+      >
       <button
         className="cursor-grab rounded p-0.5 opacity-0 group-hover:opacity-60"
         aria-label={`Mover ${note}`}
@@ -135,7 +155,8 @@ function NoteTreeItem({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+      </div>
+    </NoteContextMenu>
   );
 }
 
@@ -150,6 +171,9 @@ function ProjectTreeItem({
   onNewNote,
   onRename,
   onDelete,
+  onDuplicate,
+  onMove,
+  projects,
 }: {
   project: string;
   notes: string[];
@@ -161,6 +185,9 @@ function ProjectTreeItem({
   onNewNote: () => void;
   onRename: (note: string) => void;
   onDelete: (note: string) => void;
+  onDuplicate: (note: string) => void;
+  onMove: (note: string, project: string) => void;
+  projects: string[];
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: `project:${project}`,
@@ -207,6 +234,9 @@ function ProjectTreeItem({
               onSelect={() => onSelectNote(note)}
               onRename={() => onRename(note)}
               onDelete={() => onDelete(note)}
+              onDuplicate={() => onDuplicate(note)}
+              onMove={(targetProject) => onMove(note, targetProject)}
+              projects={projects}
             />
           ))}
           {!notes.length && (
@@ -251,7 +281,9 @@ export default function App() {
   const [live, setLive] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
   const [modalValue, setModalValue] = useState("");
+  const [focusMode, setFocusMode] = useState(false);
 
+  const editorRef = useRef<HTMLTextAreaElement>(null);
   const selectedProjectRef = useRef(selectedProject);
   const selectedNoteRef = useRef(selectedNote);
   const contentRef = useRef(content);
@@ -259,6 +291,8 @@ export default function App() {
   const savingRef = useRef(false);
   const pendingSaveRef = useRef(false);
   const loadingRef = useRef(false);
+  const undoRef = useRef<string[]>([]);
+  const redoRef = useRef<string[]>([]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
@@ -305,6 +339,8 @@ export default function App() {
       const markdown = await api.readNote(project, note);
       contentRef.current = markdown;
       setContent(markdown);
+      undoRef.current = [];
+      redoRef.current = [];
       dirtyRef.current = false;
       setSaveState("saved");
     } finally {
@@ -515,13 +551,27 @@ export default function App() {
     const targetProject = event.over?.data.current?.project as string | undefined;
     if (!fromProject || !note || !targetProject || fromProject === targetProject)
       return;
+    await moveNote(fromProject, note, targetProject);
+  }
+
+  async function moveNote(
+    fromProject: string,
+    note: string,
+    targetProject: string,
+  ) {
+    if (fromProject === targetProject) return;
     try {
-      await saveCurrent();
-      const result = await api.moveNote(fromProject, note, targetProject);
-      if (
+      const wasSelected =
         selectedProjectRef.current === fromProject &&
-        selectedNoteRef.current === note
-      ) {
+        selectedNoteRef.current === note;
+      await saveCurrent();
+      const sourceNote = wasSelected ? selectedNoteRef.current : note;
+      const result = await api.moveNote(
+        fromProject,
+        sourceNote,
+        targetProject,
+      );
+      if (wasSelected) {
         selectedProjectRef.current = result.toProject;
         setSelectedProject(result.toProject);
       }
@@ -531,6 +581,59 @@ export default function App() {
     } catch (error) {
       toast.error(errorMessage(error));
     }
+  }
+
+  async function duplicateNote(project: string, note: string) {
+    try {
+      const wasSelected =
+        selectedProjectRef.current === project &&
+        selectedNoteRef.current === note;
+      await saveCurrent();
+      const sourceNote = wasSelected ? selectedNoteRef.current : note;
+      const existing = new Set(notesByProject[project] || []);
+      let copyName = `${sourceNote} copia`;
+      let suffix = 2;
+      while (existing.has(copyName)) {
+        copyName = `${sourceNote} copia ${suffix++}`;
+      }
+      const markdown = await api.readNote(project, sourceNote);
+      const copyContent = markdown.startsWith("# ")
+        ? markdown.replace(/^# [^\r\n]*/, `# ${copyName}`)
+        : markdown;
+      const created = await api.createNote(project, copyName, copyContent);
+      await refreshTree();
+      await selectNote(project, created);
+      toast.success("Nota duplicada");
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  }
+
+  function updateEditorContent(nextContent: string, recordHistory = true) {
+    if (nextContent === contentRef.current) return;
+    if (recordHistory) {
+      undoRef.current.push(contentRef.current);
+      if (undoRef.current.length > 200) undoRef.current.shift();
+      redoRef.current = [];
+    }
+    contentRef.current = nextContent;
+    setContent(nextContent);
+    dirtyRef.current = true;
+    setSaveState("dirty");
+  }
+
+  function applyEditorAction(action: MarkdownAction) {
+    runEditorAction(editorRef.current, action, updateEditorContent);
+  }
+
+  function handleHistory(action: "undo" | "redo") {
+    const source = action === "undo" ? undoRef.current : redoRef.current;
+    const target = action === "undo" ? redoRef.current : undoRef.current;
+    const nextContent = source.pop();
+    if (nextContent === undefined) return;
+    target.push(contentRef.current);
+    updateEditorContent(nextContent, false);
+    requestAnimationFrame(() => editorRef.current?.focus());
   }
 
   const saveLabel: Record<SaveState, string> = {
@@ -545,7 +648,12 @@ export default function App() {
     <TooltipProvider delayDuration={350}>
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <main className="flex h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
-          <aside className="flex h-full w-[276px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)]">
+          <aside
+            className={cn(
+              "flex h-full w-[276px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)]",
+              focusMode && "hidden",
+            )}
+          >
             <header className="flex h-12 shrink-0 items-center gap-2 px-3">
               <div className="grid size-7 place-items-center rounded-lg bg-[var(--primary)] font-serif text-sm font-semibold text-[var(--primary-foreground)]">
                 L
@@ -597,36 +705,59 @@ export default function App() {
               </Tooltip>
             </header>
             <Separator />
-            <ScrollArea className="min-h-0 flex-1">
-              <nav className="p-2" aria-label="Árbol de notas">
-                {projects.map((project) => (
-                  <ProjectTreeItem
-                    key={project}
-                    project={project}
-                    notes={notesByProject[project] || []}
-                    expanded={expanded.has(project)}
-                    selectedProject={selectedProject}
-                    selectedNote={selectedNote}
-                    onToggle={() => toggleProject(project)}
-                    onSelectNote={(note) => void selectNote(project, note)}
-                    onNewNote={() =>
-                      openModal({ type: "note", project }, "Nueva nota")
-                    }
-                    onRename={(note) =>
-                      openModal({ type: "rename", project, note }, note)
-                    }
-                    onDelete={(note) =>
-                      openModal({ type: "delete", project, note })
-                    }
-                  />
-                ))}
-                {!projects.length && (
-                  <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
-                    Crea tu primera carpeta.
-                  </p>
-                )}
-              </nav>
-            </ScrollArea>
+            <SidebarContextMenu
+              canCreateNote={Boolean(selectedProject || projects[0])}
+              onCreateNote={() =>
+                openModal(
+                  { type: "note", project: selectedProject || projects[0] },
+                  "Nueva nota",
+                )
+              }
+              onCreateProject={() =>
+                openModal({ type: "project" }, "Nueva carpeta")
+              }
+              onCollapseAll={() => setExpanded(new Set())}
+            >
+              <div className="min-h-0 flex-1">
+                <ScrollArea className="h-full">
+                  <nav className="p-2" aria-label="Árbol de notas">
+                    {projects.map((project) => (
+                      <ProjectTreeItem
+                        key={project}
+                        project={project}
+                        notes={notesByProject[project] || []}
+                        expanded={expanded.has(project)}
+                        selectedProject={selectedProject}
+                        selectedNote={selectedNote}
+                        onToggle={() => toggleProject(project)}
+                        onSelectNote={(note) => void selectNote(project, note)}
+                        onNewNote={() =>
+                          openModal({ type: "note", project }, "Nueva nota")
+                        }
+                        onRename={(note) =>
+                          openModal({ type: "rename", project, note }, note)
+                        }
+                        onDelete={(note) =>
+                          openModal({ type: "delete", project, note })
+                        }
+                        onDuplicate={(note) =>
+                          void duplicateNote(project, note)
+                        }
+                        onMove={(note, targetProject) =>
+                          void moveNote(project, note, targetProject)
+                        }
+                        projects={projects}
+                      />
+                    ))}
+                    {!projects.length && (
+                      <p className="px-3 py-6 text-center text-xs text-[var(--muted-foreground)]">
+                        Crea tu primera carpeta.
+                      </p>
+                    )}
+                  </nav>
+                </ScrollArea>
+              </div>
+            </SidebarContextMenu>
             <Separator />
             <div className="shrink-0 p-2">
               <Button
@@ -641,7 +772,12 @@ export default function App() {
           </aside>
 
           <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[var(--border)] px-4">
+            <header
+              className={cn(
+                "flex h-12 shrink-0 items-center gap-3 border-b border-[var(--border)] px-4",
+                focusMode && "hidden",
+              )}
+            >
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[11px] text-[var(--muted-foreground)]">
                   {selectedProject || "Biblioteca"}
@@ -689,18 +825,48 @@ export default function App() {
 
             <div className="min-h-0 flex-1 overflow-hidden">
               {viewMode === "edit" ? (
-                <textarea
-                  className="h-full w-full resize-none overflow-y-auto bg-[var(--editor)] px-[clamp(24px,7vw,96px)] py-10 font-mono text-[14px] leading-7 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
-                  value={content}
-                  disabled={!selectedNote}
-                  placeholder="Selecciona o crea una nota para empezar."
-                  onChange={(event) => {
-                    contentRef.current = event.target.value;
-                    setContent(event.target.value);
-                    dirtyRef.current = true;
-                    setSaveState("dirty");
-                  }}
-                />
+                <div className="flex h-full min-h-0 flex-col">
+                  <EditorToolbar
+                    disabled={!selectedNote}
+                    focusMode={focusMode}
+                    onAction={applyEditorAction}
+                    onHistory={handleHistory}
+                    onToggleFocus={() => setFocusMode((value) => !value)}
+                  />
+                  <EditorContextMenu
+                    disabled={!selectedNote}
+                    onAction={applyEditorAction}
+                  >
+                    <textarea
+                      ref={editorRef}
+                      className="min-h-0 flex-1 resize-none overflow-y-auto bg-[var(--editor)] px-[clamp(24px,7vw,96px)] py-10 font-mono text-[14px] leading-7 text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+                      value={content}
+                      disabled={!selectedNote}
+                      placeholder="Selecciona o crea una nota para empezar."
+                      onChange={(event) =>
+                        updateEditorContent(event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (!(event.ctrlKey || event.metaKey)) return;
+                        if (event.key.toLowerCase() === "z") {
+                          event.preventDefault();
+                          handleHistory(event.shiftKey ? "redo" : "undo");
+                          return;
+                        }
+                        const shortcuts: Record<string, MarkdownAction> = {
+                          b: "bold",
+                          i: "italic",
+                          "`": "inline-code",
+                        };
+                        const action = shortcuts[event.key.toLowerCase()];
+                        if (action) {
+                          event.preventDefault();
+                          applyEditorAction(action);
+                        }
+                      }}
+                    />
+                  </EditorContextMenu>
+                </div>
               ) : (
                 <ScrollArea className="h-full">
                   {selectedNote ? (
@@ -725,7 +891,12 @@ export default function App() {
               )}
             </div>
 
-            <footer className="flex h-7 shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 text-[10px] text-[var(--muted-foreground)]">
+            <footer
+              className={cn(
+                "flex h-7 shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 text-[10px] text-[var(--muted-foreground)]",
+                focusMode && "hidden",
+              )}
+            >
               <span
                 className={cn(
                   "size-1.5 rounded-full",

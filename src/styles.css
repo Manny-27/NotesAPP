@@ -20,6 +20,11 @@
   --destructive: #c0443b;
   --ring: #77875b;
   --scroll-thumb: #bdbdb7;
+  --toolbar: #2b2c29;
+  --toolbar-foreground: #f0f1ec;
+  --toolbar-muted: #b6b8b0;
+  --toolbar-hover: #41423e;
+  --toolbar-border: #50514c;
 }
 
 :root[data-theme="dark"] {
@@ -42,6 +47,11 @@
   --destructive: #e06e63;
   --ring: #9cab79;
   --scroll-thumb: #4b4d46;
+  --toolbar: #171815;
+  --toolbar-foreground: #eceee7;
+  --toolbar-muted: #a3a69d;
+  --toolbar-hover: #30312d;
+  --toolbar-border: #3b3c37;
 }
 
 * {
@@ -75,6 +85,10 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+textarea::selection {
+  background: color-mix(in srgb, var(--ring) 35%, transparent);
 }
 
 .markdown-preview {
